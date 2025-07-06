@@ -91,38 +91,39 @@ class LLMClient {
     const appsText = apps.length > 0 ? apps.join(', ') : 'No applications detected';
     const musicText = music || 'No music playing';
 
-    return `Generate Discord status from professional apps. Show exactly 4 apps when possible.
+    return `Generate Discord status from unique professional apps.
 
-Professional apps detected: ${appsText}
+INPUTS:
+Professional apps: ${appsText}
 Music: ${musicText}
 
-Rules:
-- Select exactly 4 most relevant apps from the professional apps list
-- CRITICAL: NO DUPLICATE APPS - each app name must appear exactly once
-- If less than 4 apps available, show all available apps (don't repeat any)
-- Clean up app names: "stable" → "Warp", "zed" → "Zed", "code" → "VS Code", "Adobe Photoshop 2025" → "Photoshop", etc.
-- Prioritize: Development tools > Office apps > Creative tools > Browsers  
-- BE CONSISTENT - always pick the same apps for the same app list
-- Line1: Using [app1] + [app2] + [app3] + [app4] (NO music apps here)
-- Line2: If music detected → ♪ [exact music text], if "No music playing" → workflow description
+STRICT RULES:
+1. NEVER repeat any app name - each app must appear ONLY ONCE
+2. Select up to 4 apps maximum (or fewer if less available)
+3. If you see duplicates in input, use each app ONLY ONCE
+4. Clean names: "stable"→"Warp", "zed"→"Zed", "code"→"VS Code", "cursor"→"Cursor"
+5. Priority order: Dev tools > Creative > Office > Browsers
+6. Format: "Using [App1] + [App2] + [App3] + [App4]"
 
-Examples:
-Professional apps: stable, zed, Microsoft Excel, Safari
+OUTPUT FORMAT:
+Line1: Using [apps joined with +]
+Line2: ♪ [music] OR [workflow type based on apps]
+
+EXAMPLES:
+Input: cursor, safari, safari, warp
+Output:
+Line1: Using Cursor + Safari + Warp
+Line2: Development workflow
+
+Input: stable, zed, Microsoft Excel, Safari
 Music: Song by Artist on Apple Music
-→ Line1: Using Warp + Zed + Excel + Safari
-→ Line2: ♪ Song by Artist on Apple Music
+Output:
+Line1: Using Warp + Zed + Excel + Safari
+Line2: ♪ Song by Artist on Apple Music
 
-Professional apps: stable, Safari, Safari, Safari (duplicates detected)
-Music: No music playing
-→ Line1: Using Warp + Safari (NO DUPLICATES!)
-→ Line2: Development workflow
+IMPORTANT: Count each app only once. If Safari appears 3 times, show it ONCE.
 
-Professional apps: Adobe Photoshop, Adobe Illustrator, Google Chrome, Figma
-Music: No music playing
-→ Line1: Using Photoshop + Illustrator + Chrome + Figma  
-→ Line2: Creative design workflow
-
-Respond exactly:
+Respond ONLY with:
 Line1: [your line]
 Line2: [your line]`;
   }
