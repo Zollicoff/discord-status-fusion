@@ -97,22 +97,21 @@ INPUTS:
 Professional apps: ${appsText}
 Music: ${musicText}
 
-STRICT RULES:
-1. NEVER repeat any app name - each app must appear ONLY ONCE
-2. Select up to 4 apps maximum (or fewer if less available)
-3. If you see duplicates in input, use each app ONLY ONCE
-4. Clean names: "stable"→"Warp", "zed"→"Zed", "code"→"VS Code", "cursor"→"Cursor"
-5. Priority order: Dev tools > Creative > Office > Browsers
-6. Format: "Using [App1] + [App2] + [App3] + [App4]"
+RULES:
+1. Each app should appear only once in output (no duplicates)
+2. Select up to 4 most relevant apps (or all if fewer available)
+3. Clean names: "stable"→"Warp", "zed"→"Zed", "code"→"VS Code", "cursor"→"Cursor"
+4. Priority: Dev tools > Creative > Office > Browsers (but include all types)
+5. Format: "Using [App1] + [App2] + [App3] + [App4]"
 
 OUTPUT FORMAT:
 Line1: Using [apps joined with +]
 Line2: ♪ [music] OR [workflow type based on apps]
 
 EXAMPLES:
-Input: cursor, safari, safari, warp
+Input: cursor, safari, firefox, warp
 Output:
-Line1: Using Cursor + Safari + Warp
+Line1: Using Cursor + Warp + Safari + Firefox
 Line2: Development workflow
 
 Input: stable, zed, Microsoft Excel, Safari
@@ -121,7 +120,7 @@ Output:
 Line1: Using Warp + Zed + Excel + Safari
 Line2: ♪ Song by Artist on Apple Music
 
-IMPORTANT: Count each app only once. If Safari appears 3 times, show it ONCE.
+Note: If duplicates exist in input, include each app only once in output.
 
 Respond ONLY with:
 Line1: [your line]
