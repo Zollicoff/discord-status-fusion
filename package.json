@@ -1,0 +1,48 @@
+{
+  "name": "discord-status-fusion",
+  "version": "1.0.0",
+  "description": "AI-powered Discord Rich Presence using Gemini 2.5 Flash-Lite Preview. Ultra-fast, intelligent status generation with smart change detection.",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js",
+    "dev": "nodemon main.js",
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zollicoff/discord-status-fusion.git"
+  },
+  "keywords": [
+    "discord",
+    "rich-presence",
+    "ai",
+    "llm",
+    "gemini",
+    "developer-tools",
+    "multi-app",
+    "fusion",
+    "artificial-intelligence",
+    "contextual",
+    "smart-status",
+    "productivity",
+    "automation"
+  ],
+  "author": "Zollicoff",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Zollicoff/discord-status-fusion/issues"
+  },
+  "homepage": "https://github.com/Zollicoff/discord-status-fusion#readme",
+  "dependencies": {
+    "discord-rpc": "^4.0.1",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "eslint": "^8.0.0",
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
