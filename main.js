@@ -19,7 +19,7 @@ class DiscordStatusFusion {
     this.lastStatus = null;
     this.lastApps = [];
     this.lastMusic = null;
-    this.updateInterval = 30000; // 30 seconds - optimized with change detection
+    this.updateInterval = 10000; // 10 seconds - optimized with change detection
     this.forceUpdateInterval = 300000; // 5 minutes - forced refresh
     this.lastForceUpdate = 0;
   }
