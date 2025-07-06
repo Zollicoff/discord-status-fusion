@@ -8,7 +8,7 @@ const DiscordRPC = require('discord-rpc');
 /**
  * Discord Status Fusion v1.0
  * AI-powered Discord Rich Presence with intelligent status generation
- * Features smart change detection and professional app filtering
+ * Features smart change detection, professional app filtering, and forced refresh
  */
 class DiscordStatusFusion {
   constructor() {
@@ -20,6 +20,8 @@ class DiscordStatusFusion {
     this.lastApps = [];
     this.lastMusic = null;
     this.updateInterval = 30000; // 30 seconds - optimized with change detection
+    this.forceUpdateInterval = 300000; // 5 minutes - forced refresh
+    this.lastForceUpdate = 0;
   }
 
   /**
@@ -69,8 +71,8 @@ class DiscordStatusFusion {
    * Start the main update loop
    */
   startUpdateLoop() {
-    console.log(`⏰ Starting update loop (interval: ${this.updateInterval / 1000}s)`);
-    
+    console.log(`⏰ Starting update loop (interval: ${this.updateInterval / 1000}s, forced refresh: ${this.forceUpdateInterval / 60000}min)`);
+
     // Initial update
     this.updateStatus();
 
@@ -89,29 +91,39 @@ class DiscordStatusFusion {
   hasAppsOrMusicChanged(apps, music) {
     // Check if app list changed
     const appsChanged = JSON.stringify(apps.sort()) !== JSON.stringify(this.lastApps.sort());
-    
+
     // Check if music changed
     const musicChanged = music !== this.lastMusic;
-    
+
     return appsChanged || musicChanged;
   }
 
   /**
-   * Update Discord status using AI (only when apps/music change)
+   * Update Discord status using AI (when apps/music change or forced refresh)
    */
   async updateStatus() {
     try {
       // Get current state
       const apps = await this.detector.getInterestingApps();
       const music = await this.music.getCurrentMusic();
-      
+
       // Debug music detection
       console.log('🎵 Music detection result:', music === null ? 'No music playing' : music);
 
-      // Only call LLM if apps or music changed
-      if (this.hasAppsOrMusicChanged(apps, music)) {
-        console.log('📱 Apps or music changed, generating new status...');
-        
+      // Check if we need to force an update (every 5 minutes)
+      const now = Date.now();
+      const timeSinceLastForce = now - this.lastForceUpdate;
+      const needsForceUpdate = timeSinceLastForce >= this.forceUpdateInterval;
+
+      // Update if apps/music changed OR if it's time for forced refresh
+      if (this.hasAppsOrMusicChanged(apps, music) || needsForceUpdate) {
+        if (needsForceUpdate) {
+          console.log('🔄 Forced refresh (5 minutes elapsed), updating status...');
+          this.lastForceUpdate = now;
+        } else {
+          console.log('📱 Apps or music changed, generating new status...');
+        }
+
         // Generate status with AI
         const status = await this.llm.generateStatus(apps, music);
 
@@ -120,7 +132,7 @@ class DiscordStatusFusion {
         this.lastStatus = status;
         this.lastApps = [...apps];
         this.lastMusic = music;
-        
+
         console.log(`🎯 Updated Discord status: ${status.details}`);
         if (status.state && status.state !== 'Idle') {
           console.log(`   └─ ${status.state}`);

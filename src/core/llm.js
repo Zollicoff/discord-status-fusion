@@ -16,27 +16,27 @@ class LLMClient {
    */
   async loadApiKey() {
     if (this.keyLoaded) return;
-    
+
     try {
       const { exec } = require('child_process');
       const { promisify } = require('util');
       const execAsync = promisify(exec);
-      
+
       let command;
       switch (process.platform) {
-        case 'darwin': // macOS
-          command = 'security find-generic-password -s "GOOGLE_AI_API_KEY" -w 2>/dev/null';
-          break;
-        case 'win32': // Windows
-          command = 'cmdkey /list | findstr "GOOGLE_AI_API_KEY" >nul && for /f "tokens=2 delims=:" %i in (\'cmdkey /list ^| findstr "GOOGLE_AI_API_KEY"\') do echo %i';
-          break;
-        case 'linux': // Linux
-          command = 'secret-tool lookup service "GOOGLE_AI_API_KEY" username "discord-status-fusion" 2>/dev/null';
-          break;
-        default:
-          throw new Error(`Unsupported platform: ${process.platform}`);
+      case 'darwin': // macOS
+        command = 'security find-generic-password -s "GOOGLE_AI_API_KEY" -w 2>/dev/null';
+        break;
+      case 'win32': // Windows
+        command = 'cmdkey /list | findstr "GOOGLE_AI_API_KEY" >nul && for /f "tokens=2 delims=:" %i in (\'cmdkey /list ^| findstr "GOOGLE_AI_API_KEY"\') do echo %i';
+        break;
+      case 'linux': // Linux
+        command = 'secret-tool lookup service "GOOGLE_AI_API_KEY" username "discord-status-fusion" 2>/dev/null';
+        break;
+      default:
+        throw new Error(`Unsupported platform: ${process.platform}`);
       }
-      
+
       const { stdout } = await execAsync(command);
       this.apiKey = stdout.trim();
       this.keyLoaded = true;
@@ -55,7 +55,7 @@ class LLMClient {
    */
   async generateStatus(apps, music) {
     await this.loadApiKey();
-    
+
     if (!this.apiKey) {
       return this.fallbackStatus(apps, music);
     }
@@ -136,7 +136,7 @@ Line2: [your line]`;
     const response = await fetch(`${this.baseUrl}?key=${this.apiKey}`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         contents: [{
@@ -147,7 +147,7 @@ Line2: [your line]`;
         generationConfig: {
           temperature: 0.0,  // Maximum consistency
           maxOutputTokens: 500,
-          topP: 0.1,  // Less randomness
+          topP: 0.1  // Less randomness
         }
       })
     });
@@ -157,22 +157,22 @@ Line2: [your line]`;
     }
 
     const data = await response.json();
-    
+
     if (!data.candidates || !data.candidates[0]) {
       throw new Error('No candidates in API response');
     }
-    
+
     const candidate = data.candidates[0];
-    
+
     // Check if response was truncated
     if (candidate.finishReason === 'MAX_TOKENS') {
       throw new Error('Response truncated - increase maxOutputTokens');
     }
-    
+
     if (!candidate.content || !candidate.content.parts || !candidate.content.parts[0]) {
       throw new Error('No content parts in response');
     }
-    
+
     return candidate.content.parts[0].text || '';
   }
 
@@ -184,7 +184,7 @@ Line2: [your line]`;
   parseResponse(response) {
     try {
       const lines = response.split('\n').filter(line => line.trim());
-      
+
       let details = 'Discord Status Fusion';
       let state = 'AI-powered status';
 
@@ -219,9 +219,9 @@ Line2: [your line]`;
    */
   fallbackStatus(apps, music) {
     // Simple fallback status when LLM is unavailable
-    let details = 'Discord Status Fusion';
+    const details = 'Discord Status Fusion';
     let state = 'LLM temporarily unavailable';
-    
+
     if (music) {
       state = `♪ ${music}`;
     }

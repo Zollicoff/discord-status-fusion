@@ -16,13 +16,13 @@ class ProcessDetector {
   async getRunningProcesses() {
     return new Promise((resolve, reject) => {
       const command = this.getProcessCommand();
-      
+
       exec(command, (error, stdout) => {
         if (error) {
           reject(new Error(`Failed to get processes: ${error.message}`));
           return;
         }
-        
+
         const processes = this.parseProcessOutput(stdout);
         this.lastProcesses = processes;
         resolve(processes);
@@ -36,14 +36,14 @@ class ProcessDetector {
    */
   getProcessCommand() {
     switch (process.platform) {
-      case 'win32':
-        return 'wmic process get Name /format:csv';
-      case 'darwin':
-        return 'ps -eo comm';
-      case 'linux':
-        return 'ps -eo comm';
-      default:
-        return 'ps -eo comm';
+    case 'win32':
+      return 'wmic process get Name /format:csv';
+    case 'darwin':
+      return 'ps -eo comm';
+    case 'linux':
+      return 'ps -eo comm';
+    default:
+      return 'ps -eo comm';
     }
   }
 
@@ -54,7 +54,7 @@ class ProcessDetector {
    */
   parseProcessOutput(stdout) {
     const lines = stdout.split('\n').map(line => line.trim()).filter(Boolean);
-    
+
     if (process.platform === 'win32') {
       // Windows CSV format: Node,Name
       return lines
@@ -84,13 +84,13 @@ class ProcessDetector {
         return parts[1];
       }
     }
-    
+
     // Extract from .app directory name
-    const appMatch = processPath.match(/\/([^\/]+)\.app/);
+    const appMatch = processPath.match(/\/([^/]+)\.app/);
     if (appMatch) {
       return appMatch[1];
     }
-    
+
     // Remove file extensions
     return processPath.replace(/\.(exe|app)$/i, '');
   }
@@ -102,8 +102,8 @@ class ProcessDetector {
    */
   isProfessionalApp(processName) {
     // Filter out system paths first
-    if (processName.startsWith('/System/') || 
-        processName.startsWith('/usr/') || 
+    if (processName.startsWith('/System/') ||
+        processName.startsWith('/usr/') ||
         processName.startsWith('/Library/') ||
         processName.includes('XPCService') ||
         processName.includes('HelperTool') ||
@@ -111,7 +111,7 @@ class ProcessDetector {
         processName.includes('.framework/')) {
       return false;
     }
-    
+
     const professionalApps = [
       // Development Tools & IDEs (exact matches)
       /^cursor$/i, /^zed$/i, /^code$/i, /^visual studio code$/i, /^xcode$/i,
@@ -119,7 +119,7 @@ class ProcessDetector {
       /^sublime text$/i, /^atom$/i, /^vim$/i, /^emacs$/i,
       /^stable$/i,  // Warp Terminal (exact match)
       /^iterm2?$/i, /^terminal$/i, /^hyper$/i,
-      
+
       // Creative & Design Tools
       /^adobe photoshop/i, /^adobe illustrator/i, /^adobe after effects/i,
       /^adobe premiere pro/i, /^adobe lightroom/i, /^adobe indesign/i,
@@ -127,27 +127,27 @@ class ProcessDetector {
       /^figma$/i, /^sketch$/i, /^canva$/i, /^affinity/i,
       /^final cut pro$/i, /^logic pro$/i, /^pro tools$/i,
       /^blender$/i, /^cinema 4d$/i, /^maya$/i, /^3ds max$/i,
-      
+
       // Office & Productivity
       /^microsoft word$/i, /^microsoft excel$/i, /^microsoft powerpoint$/i,
       /^microsoft outlook$/i, /^microsoft project$/i, /^microsoft visio$/i,
       /^notion$/i, /^obsidian$/i, /^roam research$/i, /^logseq$/i,
       /^keynote$/i, /^pages$/i, /^numbers$/i,
-      
+
       // Browsers (exact matches)
-      /^google chrome$/i, /^chrome$/i, /^safari$/i, /^firefox$/i, 
+      /^google chrome$/i, /^chrome$/i, /^safari$/i, /^firefox$/i,
       /^microsoft edge$/i, /^brave browser$/i, /^opera$/i, /^arc$/i,
-      
+
       // Database & API Tools
       /^tableplus$/i, /^sequel pro$/i, /^navicat$/i, /^dbeaver$/i,
       /^postman$/i, /^insomnia$/i, /^paw$/i,
-      
+
       // Professional Software
       /^autocad$/i, /^solidworks$/i, /^fusion 360$/i,
       /^unity$/i, /^unreal engine$/i, /^godot$/i,
       /^docker desktop$/i, /^vmware fusion$/i, /^parallels desktop$/i,
       /^wireshark$/i, /^charles$/i,
-      /^sourcetree$/i, /^github desktop$/i, /^gitkraken$/i,
+      /^sourcetree$/i, /^github desktop$/i, /^gitkraken$/i
     ];
 
     return professionalApps.some(pattern => pattern.test(processName));
@@ -159,10 +159,10 @@ class ProcessDetector {
    */
   async getInterestingApps() {
     const processes = await this.getRunningProcesses();
-    
+
     // Filter to only professional apps using whitelist
     const professionalApps = processes.filter(process => this.isProfessionalApp(process));
-    
+
     // Remove duplicates and return unique apps
     return [...new Set(professionalApps)];
   }

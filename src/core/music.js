@@ -47,7 +47,7 @@ class MusicDetector {
           resolve(null);
           return;
         }
-        
+
         // Clean up the output and ensure consistent format
         let result = stdout.trim();
         if (result && !result.includes(' on Apple Music')) {

@@ -17,7 +17,7 @@ module.exports = {
     'no-console': 'off', // Allow console.log for Discord Status Fusion logging
     'prefer-const': 'error',
     'no-var': 'error',
-    
+
     // Style
     'indent': ['error', 2],
     'quotes': ['error', 'single'],
@@ -25,7 +25,7 @@ module.exports = {
     'comma-dangle': ['error', 'never'],
     'object-curly-spacing': ['error', 'always'],
     'array-bracket-spacing': ['error', 'never'],
-    
+
     // Best practices
     'eqeqeq': 'error',
     'no-trailing-spaces': 'error',
