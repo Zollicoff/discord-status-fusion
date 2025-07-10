@@ -91,40 +91,16 @@ class LLMClient {
     const appsText = apps.length > 0 ? apps.join(', ') : 'No applications detected';
     const musicText = music || 'No music playing';
 
-    return `Generate Discord status from unique professional apps.
+    return `Create a Discord status from these apps: ${appsText}
 
-INPUTS:
-Professional apps: ${appsText}
-Music: ${musicText}
+Rules:
+- Include ALL apps listed above
+- Rename: "stable" to "Warp", "code" to "VS Code"
+- Format: "Using App1 + App2 + App3"
 
-RULES:
-1. Each app should appear only once in output (no duplicates)
-2. Select up to 4 most relevant apps (or all if fewer available)
-3. Clean names: "stable"→"Warp", "zed"→"Zed", "code"→"VS Code", "cursor"→"Cursor"
-4. Priority: Dev tools > Creative > Office > Browsers (but include all types)
-5. Format: "Using [App1] + [App2] + [App3] + [App4]"
-
-OUTPUT FORMAT:
-Line1: Using [apps joined with +]
-Line2: ♪ [music] OR [workflow type based on apps]
-
-EXAMPLES:
-Input: cursor, safari, firefox, warp
-Output:
-Line1: Using Cursor + Warp + Safari + Firefox
-Line2: Development workflow
-
-Input: stable, zed, Microsoft Excel, Safari
-Music: Song by Artist on Apple Music
-Output:
-Line1: Using Warp + Zed + Excel + Safari
-Line2: ♪ Song by Artist on Apple Music
-
-Note: If duplicates exist in input, include each app only once in output.
-
-Respond ONLY with:
-Line1: [your line]
-Line2: [your line]`;
+Reply with exactly:
+Line1: Using [all apps with + between them]
+Line2: ${music !== 'No music playing' ? '♪ ' + music : 'Working on projects'}`;
   }
 
   /**
