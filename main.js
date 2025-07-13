@@ -5,6 +5,55 @@ const MusicDetector = require('./src/core/music');
 const LLMClient = require('./src/core/llm');
 const DiscordRPC = require('discord-rpc');
 
+// Parse command line arguments
+const args = process.argv.slice(2);
+const isVerboseMode = args.includes('--verbose');
+
+// Simple logging utility
+function log(emoji, message, level = 'normal') {
+  if (!isVerboseMode && level === 'verbose') return;
+  console.log(emoji, message);
+}
+
+// Simple spinner for showing running status
+class Spinner {
+  constructor() {
+    this.frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    this.current = 0;
+    this.interval = null;
+    this.isSpinning = false;
+  }
+
+  start(message = 'Running') {
+    if (this.isSpinning || isVerboseMode) return;
+    this.isSpinning = true;
+    
+    process.stdout.write(`${this.frames[0]} ${message}...`);
+    
+    this.interval = setInterval(() => {
+      this.current = (this.current + 1) % this.frames.length;
+      process.stdout.write(`\r${this.frames[this.current]} ${message}...`);
+    }, 120);
+  }
+
+  stop() {
+    if (!this.isSpinning) return;
+    this.isSpinning = false;
+    
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+    
+    process.stdout.write('\r\x1b[K');
+  }
+
+  update(message) {
+    if (!this.isSpinning || isVerboseMode) return;
+    process.stdout.write(`\r${this.frames[this.current]} ${message}...`);
+  }
+}
+
 /**
  * Discord Status Fusion v1.0
  * AI-powered Discord Rich Presence with intelligent status generation
@@ -16,6 +65,7 @@ class DiscordStatusFusion {
     this.music = new MusicDetector();
     this.llm = new LLMClient();
     this.discord = new DiscordRPC.Client({ transport: 'ipc' });
+    this.spinner = new Spinner();
     this.lastStatus = null;
     this.lastApps = [];
     this.lastMusic = null;
@@ -39,6 +89,9 @@ class DiscordStatusFusion {
 
     console.log('✅ Discord Status Fusion is running!');
     console.log('🤖 AI-powered status generation active');
+    
+    // Start spinner to show app is running (only in normal mode)
+    this.spinner.start('Running');
   }
 
   /**
@@ -108,7 +161,7 @@ class DiscordStatusFusion {
       const music = await this.music.getCurrentMusic();
 
       // Debug music detection
-      console.log('🎵 Music detection result:', music === null ? 'No music playing' : music);
+      log('🎵', `Music detection result: ${music === null ? 'No music playing' : music}`, 'verbose');
 
       // Check if we need to force an update (every 5 minutes)
       const now = Date.now();
@@ -117,6 +170,8 @@ class DiscordStatusFusion {
 
       // Update if apps/music changed OR if it's time for forced refresh
       if (this.hasAppsOrMusicChanged(apps, music) || needsForceUpdate) {
+        this.spinner.stop();
+        
         if (needsForceUpdate) {
           console.log('🔄 Forced refresh (5 minutes elapsed), updating status...');
           this.lastForceUpdate = now;
@@ -137,8 +192,11 @@ class DiscordStatusFusion {
         if (status.state && status.state !== 'Idle') {
           console.log(`   └─ ${status.state}`);
         }
+        
+        // Restart spinner
+        this.spinner.start('Running');
       } else {
-        console.log('⏸️  No changes detected, skipping LLM call');
+        log('⏸️', 'No changes detected, skipping LLM call', 'verbose');
       }
     } catch (error) {
       console.error('❌ Error updating status:', error.message);
@@ -156,6 +214,9 @@ app.start().catch(error => {
 
 // Graceful shutdown
 process.on('SIGINT', () => {
+  if (app && app.spinner) {
+    app.spinner.stop();
+  }
   console.log('\\n👋 Shutting down Discord Status Fusion...');
   process.exit(0);
 });
