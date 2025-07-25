@@ -76,9 +76,14 @@ AI-powered Discord Rich Presence that intelligently displays your current profes
    # Edit .env and add your Discord Application ID
    ```
 
-6. **Run**
+6. **Install CLI**
    ```bash
-   npm start
+   npm install -g .
+   ```
+
+7. **Run**
+   ```bash
+   dsf start
    ```
 
 ## 🎯 How It Works
@@ -107,6 +112,19 @@ AI-powered Discord Rich Presence that intelligently displays your current profes
 🎯 Using Cursor + Photoshop + Safari + Excel
    └─ ♪ Song Name by Artist on Apple Music
 ```
+
+## 🛠️ CLI Commands
+
+After installing globally with `npm install -g .`, you can use:
+
+```bash
+dsf start   # Start the daemon in background
+dsf stop    # Stop the daemon
+dsf status  # Check if running
+dsf help    # Show help
+```
+
+The daemon runs in the background and survives terminal closures. Logs are written to `discord-status-fusion.log`.
 
 ## ⚙️ Configuration
 

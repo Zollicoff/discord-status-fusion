@@ -3,8 +3,13 @@
   "version": "1.0.0",
   "description": "AI-powered Discord Rich Presence using Gemini 2.5 Flash-Lite Preview. Ultra-fast, intelligent status generation with smart change detection.",
   "main": "main.js",
+  "bin": {
+    "dsf": "./bin/dsf"
+  },
   "scripts": {
     "start": "node main.js",
+    "start:daemon": "nohup node main.js > discord-status-fusion.log 2>&1 &",
+    "stop:daemon": "pkill -f 'node main.js'",
     "dev": "nodemon main.js",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix"
