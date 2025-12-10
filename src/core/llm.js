@@ -5,10 +5,22 @@
 class LLMClient {
   constructor() {
     this.apiKey = null;
-    this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent';
+    this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
     this.keyLoaded = false;
     this.lastCallTime = 0;
     this.minCallInterval = 2000; // Minimum 2 seconds between API calls
+    this.fetchFn = typeof globalThis.fetch === 'function' ? (...args) => globalThis.fetch(...args) : null;
+  }
+
+  /**
+   * Ensure a fetch implementation is available in Node.js environments.
+   */
+  async ensureFetch() {
+    if (!this.fetchFn) {
+      const { default: fetch } = await import('node-fetch');
+      this.fetchFn = fetch;
+    }
+    return this.fetchFn;
   }
 
   /**
@@ -89,7 +101,6 @@ class LLMClient {
    */
   buildPrompt(apps, music) {
     const appsText = apps.length > 0 ? apps.join(', ') : 'No applications detected';
-    const musicText = music || 'No music playing';
 
     return `Create a Discord status from these apps: ${appsText}
 
@@ -109,6 +120,7 @@ Line2: ${music !== 'No music playing' ? '♪ ' + music : 'Working on projects'}`
    * @returns {Promise<string>} LLM response
    */
   async callGemini(prompt) {
+    const fetch = await this.ensureFetch();
     const response = await fetch(`${this.baseUrl}?key=${this.apiKey}`, {
       method: 'POST',
       headers: {

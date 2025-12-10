@@ -10,6 +10,10 @@ class MusicDetector {
    * @returns {Promise<string|null>} Music description or null
    */
   async getCurrentMusic() {
+    if (process.platform !== 'darwin') {
+      return null;
+    }
+
     try {
       // Try Apple Music first (native macOS)
       const appleMusic = await this.getAppleMusic();

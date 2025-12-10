@@ -27,9 +27,9 @@ class Spinner {
   start(message = 'Running') {
     if (this.isSpinning || isVerboseMode) return;
     this.isSpinning = true;
-    
+
     process.stdout.write(`${this.frames[0]} ${message}...`);
-    
+
     this.interval = setInterval(() => {
       this.current = (this.current + 1) % this.frames.length;
       process.stdout.write(`\r${this.frames[this.current]} ${message}...`);
@@ -39,12 +39,12 @@ class Spinner {
   stop() {
     if (!this.isSpinning) return;
     this.isSpinning = false;
-    
+
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
-    
+
     process.stdout.write('\r\x1b[K');
   }
 
@@ -69,6 +69,8 @@ class DiscordStatusFusion {
     this.lastStatus = null;
     this.lastApps = [];
     this.lastMusic = null;
+    this.isUpdating = false;
+    this.updateTimer = null;
     this.updateInterval = 10000; // 10 seconds - optimized with change detection
     this.forceUpdateInterval = 300000; // 5 minutes - forced refresh
     this.lastForceUpdate = 0;
@@ -89,7 +91,7 @@ class DiscordStatusFusion {
 
     console.log('✅ Discord Status Fusion is running!');
     console.log('🤖 AI-powered status generation active');
-    
+
     // Start spinner to show app is running (only in normal mode)
     this.spinner.start('Running');
   }
@@ -129,8 +131,13 @@ class DiscordStatusFusion {
     // Initial update
     this.updateStatus();
 
+    // Reset any previous timer before scheduling
+    if (this.updateTimer) {
+      clearInterval(this.updateTimer);
+    }
+
     // Schedule regular updates
-    setInterval(() => {
+    this.updateTimer = setInterval(() => {
       this.updateStatus();
     }, this.updateInterval);
   }
@@ -155,6 +162,13 @@ class DiscordStatusFusion {
    * Update Discord status using AI (when apps/music change or forced refresh)
    */
   async updateStatus() {
+    if (this.isUpdating) {
+      log('⏳', 'Status update already in progress', 'verbose');
+      return;
+    }
+
+    this.isUpdating = true;
+
     try {
       // Get current state
       const apps = await this.detector.getInterestingApps();
@@ -171,7 +185,7 @@ class DiscordStatusFusion {
       // Update if apps/music changed OR if it's time for forced refresh
       if (this.hasAppsOrMusicChanged(apps, music) || needsForceUpdate) {
         this.spinner.stop();
-        
+
         if (needsForceUpdate) {
           console.log('🔄 Forced refresh (5 minutes elapsed), updating status...');
           this.lastForceUpdate = now;
@@ -192,7 +206,7 @@ class DiscordStatusFusion {
         if (status.state && status.state !== 'Idle') {
           console.log(`   └─ ${status.state}`);
         }
-        
+
         // Restart spinner
         this.spinner.start('Running');
       } else {
@@ -200,6 +214,11 @@ class DiscordStatusFusion {
       }
     } catch (error) {
       console.error('❌ Error updating status:', error.message);
+    } finally {
+      this.isUpdating = false;
+      if (!this.spinner.isSpinning && !isVerboseMode) {
+        this.spinner.start('Running');
+      }
     }
   }
 
@@ -214,8 +233,14 @@ app.start().catch(error => {
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-  if (app && app.spinner) {
-    app.spinner.stop();
+  if (app) {
+    if (app.spinner) {
+      app.spinner.stop();
+    }
+    if (app.updateTimer) {
+      clearInterval(app.updateTimer);
+      app.updateTimer = null;
+    }
   }
   console.log('\\n👋 Shutting down Discord Status Fusion...');
   process.exit(0);
