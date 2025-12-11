@@ -30,31 +30,72 @@ class LLMClient {
     if (this.keyLoaded) return;
 
     try {
-      const { exec } = require('child_process');
+      const { execFile } = require('child_process');
       const { promisify } = require('util');
-      const execAsync = promisify(exec);
+      const execFileAsync = promisify(execFile);
 
-      let command;
+      let result;
       switch (process.platform) {
       case 'darwin': // macOS
-        command = 'security find-generic-password -s "GOOGLE_AI_API_KEY" -w 2>/dev/null';
+        try {
+          result = await execFileAsync('security', [
+            'find-generic-password',
+            '-s', 'GOOGLE_AI_API_KEY',
+            '-w'
+          ]);
+          this.apiKey = result.stdout.trim();
+        } catch (error) {
+          if (error.code === 44) {
+            // Item not found in keychain
+            console.warn('[WARN] GOOGLE_AI_API_KEY not found in macOS keychain');
+            console.warn('[WARN] Run: security add-generic-password -s "GOOGLE_AI_API_KEY" -a "$(whoami)" -w "your-key"');
+          } else {
+            console.warn('[WARN] Failed to access macOS keychain:', error.message);
+          }
+        }
         break;
+
       case 'win32': // Windows
-        command = 'cmdkey /list | findstr "GOOGLE_AI_API_KEY" >nul && for /f "tokens=2 delims=:" %i in (\'cmdkey /list ^| findstr "GOOGLE_AI_API_KEY"\') do echo %i';
+        try {
+          // Windows credential retrieval is more complex, using PowerShell
+          result = await execFileAsync('powershell', [
+            '-Command',
+            '(Get-StoredCredential -Target GOOGLE_AI_API_KEY).GetNetworkCredential().Password'
+          ]);
+          this.apiKey = result.stdout.trim();
+        } catch (error) {
+          console.warn('[WARN] GOOGLE_AI_API_KEY not found in Windows Credential Manager');
+          console.warn('[WARN] Run: cmdkey /add:GOOGLE_AI_API_KEY /user:discord-status-fusion /pass:your-key');
+        }
         break;
+
       case 'linux': // Linux
-        command = 'secret-tool lookup service "GOOGLE_AI_API_KEY" username "discord-status-fusion" 2>/dev/null';
+        try {
+          result = await execFileAsync('secret-tool', [
+            'lookup',
+            'service', 'GOOGLE_AI_API_KEY',
+            'username', 'discord-status-fusion'
+          ]);
+          this.apiKey = result.stdout.trim();
+        } catch (error) {
+          console.warn('[WARN] GOOGLE_AI_API_KEY not found in Linux secret storage');
+          console.warn('[WARN] Run: secret-tool store --label="Google AI API Key" service "GOOGLE_AI_API_KEY" username "discord-status-fusion"');
+        }
         break;
+
       default:
-        throw new Error(`Unsupported platform: ${process.platform}`);
+        console.error('[ERROR] Unsupported platform for keychain access:', process.platform);
       }
 
-      const { stdout } = await execAsync(command);
-      this.apiKey = stdout.trim();
       this.keyLoaded = true;
-      console.log(`🔑 API key loaded from ${process.platform} keychain`);
+
+      if (this.apiKey) {
+        console.log(`[INFO] API key loaded from ${process.platform} keychain`);
+      } else {
+        console.warn('[WARN] No API key available, using fallback status generation');
+      }
     } catch (error) {
-      console.warn(`⚠️  No GOOGLE_AI_API_KEY found in ${process.platform} keychain, using fallback logic`);
+      console.error('[ERROR] Unexpected error loading API key:', error.message);
       this.keyLoaded = true;
     }
   }
@@ -85,9 +126,9 @@ class LLMClient {
       this.lastCallTime = now;
       return this.parseResponse(response);
     } catch (error) {
-      console.error('❌ LLM error:', error.message);
+      console.error('[ERROR] LLM error:', error.message);
       if (error.message.includes('429')) {
-        console.warn('⏳ Rate limited - using fallback');
+        console.warn('[WARN] Rate limited - using fallback');
       }
       return this.fallbackStatus(apps, music);
     }
@@ -111,7 +152,7 @@ Rules:
 
 Reply with exactly:
 Line1: Using [all apps with + between them]
-Line2: ${music !== 'No music playing' ? '♪ ' + music : 'Working on projects'}`;
+Line2: ${music !== 'No music playing' ? '# ' + music : 'Working on projects'}`;
   }
 
   /**
@@ -194,7 +235,7 @@ Line2: ${music !== 'No music playing' ? '♪ ' + music : 'Working on projects'}`
         startTimestamp: Date.now()
       };
     } catch (error) {
-      console.error('❌ Failed to parse LLM response:', error.message);
+      console.error('[ERROR] Failed to parse LLM response:', error.message);
       return this.fallbackStatus([], null);
     }
   }
@@ -211,7 +252,7 @@ Line2: ${music !== 'No music playing' ? '♪ ' + music : 'Working on projects'}`
     let state = 'LLM temporarily unavailable';
 
     if (music) {
-      state = `♪ ${music}`;
+      state = `# ${music}`;
     }
 
     return {

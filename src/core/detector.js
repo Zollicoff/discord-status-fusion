@@ -1,4 +1,4 @@
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 
 /**
  * Process Detector for Professional Applications
@@ -15,9 +15,9 @@ class ProcessDetector {
    */
   async getRunningProcesses() {
     return new Promise((resolve, reject) => {
-      const command = this.getProcessCommand();
+      const { command, args } = this.getProcessCommand();
 
-      exec(command, (error, stdout) => {
+      execFile(command, args, (error, stdout) => {
         if (error) {
           reject(new Error(`Failed to get processes: ${error.message}`));
           return;
@@ -32,18 +32,18 @@ class ProcessDetector {
 
   /**
    * Get platform-specific process command
-   * @returns {string} Process listing command
+   * @returns {{command: string, args: string[]}} Process listing command and arguments
    */
   getProcessCommand() {
     switch (process.platform) {
     case 'win32':
-      return 'wmic process get Name /format:csv';
+      return { command: 'wmic', args: ['process', 'get', 'Name', '/format:csv'] };
     case 'darwin':
-      return 'ps -eo comm';
+      return { command: 'ps', args: ['-eo', 'comm'] };
     case 'linux':
-      return 'ps -eo comm';
+      return { command: 'ps', args: ['-eo', 'comm'] };
     default:
-      return 'ps -eo comm';
+      return { command: 'ps', args: ['-eo', 'comm'] };
     }
   }
 

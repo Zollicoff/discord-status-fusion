@@ -38,3 +38,6 @@ Thumbs.db
 # Build output
 dist/
 build/
+
+# Runtime artifacts
+dsf.pid

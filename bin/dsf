@@ -22,8 +22,8 @@ function start() {
     }
   }
 
-  console.log('🚀 Starting Discord Status Fusion...');
-  
+  console.log('Starting Discord Status Fusion...');
+
   // Use nohup command directly for true daemon behavior
   const child = spawn('nohup', ['node', MAIN_FILE], {
     detached: true,
@@ -36,8 +36,8 @@ function start() {
 
   child.unref(); // Allow parent to exit
 
-  console.log(`✅ Discord Status Fusion started (PID: ${child.pid})`);
-  console.log(`📝 Logs: ${LOG_FILE}`);
+  console.log(`Discord Status Fusion started (PID: ${child.pid})`);
+  console.log(`Logs: ${LOG_FILE}`);
 }
 
 function stop() {
@@ -47,11 +47,11 @@ function stop() {
   }
 
   const pid = fs.readFileSync(PID_FILE, 'utf8').trim();
-  
+
   try {
     process.kill(pid, 'SIGTERM');
     fs.unlinkSync(PID_FILE);
-    console.log(`✅ Discord Status Fusion stopped (PID: ${pid})`);
+    console.log(`Discord Status Fusion stopped (PID: ${pid})`);
   } catch (e) {
     console.log('Process not found, removing stale PID file');
     fs.unlinkSync(PID_FILE);
@@ -60,17 +60,17 @@ function stop() {
 
 function status() {
   if (!fs.existsSync(PID_FILE)) {
-    console.log('❌ Discord Status Fusion is not running');
+    console.log('Discord Status Fusion is not running');
     return;
   }
 
   const pid = fs.readFileSync(PID_FILE, 'utf8').trim();
-  
+
   try {
     process.kill(pid, 0); // Check if process exists
-    console.log(`✅ Discord Status Fusion is running (PID: ${pid})`);
+    console.log(`Discord Status Fusion is running (PID: ${pid})`);
   } catch (e) {
-    console.log('❌ Discord Status Fusion is not running (stale PID file)');
+    console.log('Discord Status Fusion is not running (stale PID file)');
     fs.unlinkSync(PID_FILE);
   }
 }
@@ -81,7 +81,7 @@ Discord Status Fusion CLI
 
 Usage:
   dsf start   - Start the daemon
-  dsf stop    - Stop the daemon  
+  dsf stop    - Stop the daemon
   dsf status  - Check daemon status
   dsf help    - Show this help
 `);

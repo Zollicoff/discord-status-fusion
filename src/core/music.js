@@ -5,12 +5,22 @@ const { exec } = require('child_process');
  * Detects currently playing music from Apple Music and Spotify
  */
 class MusicDetector {
+  constructor() {
+    this.platformWarningShown = false;
+  }
+
   /**
    * Get currently playing music from all sources
    * @returns {Promise<string|null>} Music description or null
    */
   async getCurrentMusic() {
     if (process.platform !== 'darwin') {
+      // Show warning once for unsupported platforms
+      if (!this.platformWarningShown) {
+        console.log('[INFO] Music detection is only available on macOS');
+        console.log('[INFO] Windows and Linux music detection is not yet implemented');
+        this.platformWarningShown = true;
+      }
       return null;
     }
 
@@ -25,7 +35,7 @@ class MusicDetector {
 
       return null;
     } catch (error) {
-      console.log('🎵 Music detection error:', error.message);
+      console.log('[MUSIC] Music detection error:', error.message);
       return null;
     }
   }

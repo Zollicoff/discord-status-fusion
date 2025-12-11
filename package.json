@@ -12,7 +12,9 @@
     "stop:daemon": "pkill -f 'node main.js'",
     "dev": "nodemon main.js",
     "lint": "eslint . --ext .js",
-    "lint:fix": "eslint . --ext .js --fix"
+    "lint:fix": "eslint . --ext .js --fix",
+    "test": "node --test src/core/__tests__/*.spec.js",
+    "test:watch": "node --test --watch src/core/__tests__/*.spec.js"
   },
   "repository": {
     "type": "git",

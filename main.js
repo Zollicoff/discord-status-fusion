@@ -9,23 +9,27 @@ const DiscordRPC = require('discord-rpc');
 const args = process.argv.slice(2);
 const isVerboseMode = args.includes('--verbose');
 
+// Check if stdout is a TTY (not redirected to file)
+const isTTY = process.stdout.isTTY;
+
 // Simple logging utility
-function log(emoji, message, level = 'normal') {
+function log(prefix, message, level = 'normal') {
   if (!isVerboseMode && level === 'verbose') return;
-  console.log(emoji, message);
+  console.log(prefix, message);
 }
 
-// Simple spinner for showing running status
+// Simple spinner for showing running status (only in TTY mode)
 class Spinner {
   constructor() {
-    this.frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    this.frames = ['|', '/', '-', '\\'];
     this.current = 0;
     this.interval = null;
     this.isSpinning = false;
   }
 
   start(message = 'Running') {
-    if (this.isSpinning || isVerboseMode) return;
+    // Only show spinner in TTY mode and non-verbose mode
+    if (this.isSpinning || isVerboseMode || !isTTY) return;
     this.isSpinning = true;
 
     process.stdout.write(`${this.frames[0]} ${message}...`);
@@ -49,9 +53,38 @@ class Spinner {
   }
 
   update(message) {
-    if (!this.isSpinning || isVerboseMode) return;
+    if (!this.isSpinning || isVerboseMode || !isTTY) return;
     process.stdout.write(`\r${this.frames[this.current]} ${message}...`);
   }
+}
+
+/**
+ * Validate required configuration before starting
+ * @returns {boolean} True if configuration is valid
+ */
+function validateConfig() {
+  const clientId = process.env.DISCORD_CLIENT_ID;
+
+  if (!clientId) {
+    console.error('[ERROR] DISCORD_CLIENT_ID not found in environment variables');
+    console.error('Please create a .env file with DISCORD_CLIENT_ID=your_application_id');
+    return false;
+  }
+
+  if (clientId === 'your_discord_application_id_here') {
+    console.error('[ERROR] DISCORD_CLIENT_ID is still set to the placeholder value');
+    console.error('Please update .env with your actual Discord Application ID');
+    return false;
+  }
+
+  // Basic format validation (Discord IDs are numeric strings)
+  if (!/^\d{17,19}$/.test(clientId)) {
+    console.error('[ERROR] DISCORD_CLIENT_ID appears to be invalid');
+    console.error('Discord Application IDs should be 17-19 digit numbers');
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -71,8 +104,12 @@ class DiscordStatusFusion {
     this.lastMusic = null;
     this.isUpdating = false;
     this.updateTimer = null;
-    this.updateInterval = 10000; // 10 seconds - optimized with change detection
-    this.forceUpdateInterval = 300000; // 5 minutes - forced refresh
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 10;
+
+    // Configurable intervals via environment variables
+    this.updateInterval = parseInt(process.env.UPDATE_INTERVAL, 10) || 10000; // Default: 10 seconds
+    this.forceUpdateInterval = parseInt(process.env.FORCE_UPDATE_INTERVAL, 10) || 300000; // Default: 5 minutes
     this.lastForceUpdate = 0;
   }
 
@@ -80,8 +117,8 @@ class DiscordStatusFusion {
    * Start the application
    */
   async start() {
-    console.log('🎮 Discord Status Fusion v1.0');
-    console.log('🚀 Starting application...');
+    console.log('Discord Status Fusion v1.0');
+    console.log('Starting application...');
 
     // Connect to Discord
     await this.connectDiscord();
@@ -89,44 +126,73 @@ class DiscordStatusFusion {
     // Start the update loop
     this.startUpdateLoop();
 
-    console.log('✅ Discord Status Fusion is running!');
-    console.log('🤖 AI-powered status generation active');
+    console.log('Discord Status Fusion is running');
+    console.log('AI-powered status generation active');
 
-    // Start spinner to show app is running (only in normal mode)
+    // Start spinner to show app is running (only in TTY mode)
     this.spinner.start('Running');
   }
 
   /**
-   * Connect to Discord RPC
+   * Connect to Discord RPC with exponential backoff
+   * @param {number} retryCount - Current retry attempt number
    */
-  async connectDiscord() {
+  async connectDiscord(retryCount = 0) {
     const clientId = process.env.DISCORD_CLIENT_ID;
-    if (!clientId) {
-      throw new Error('DISCORD_CLIENT_ID not found in environment variables');
-    }
 
-    console.log(`🔌 Connecting to Discord (Client ID: ${clientId})...`);
+    console.log(`Connecting to Discord (Client ID: ${clientId})...`);
 
     return new Promise((resolve, reject) => {
       this.discord.on('ready', () => {
-        console.log('✅ Connected to Discord RPC');
+        console.log('Connected to Discord RPC');
+        this.reconnectAttempts = 0; // Reset on successful connection
         resolve();
       });
 
       this.discord.on('disconnected', () => {
-        console.log('🔌 Discord disconnected, attempting to reconnect...');
-        setTimeout(() => this.connectDiscord(), 5000);
+        console.log('Discord disconnected, attempting to reconnect...');
+        this.reconnectWithBackoff();
       });
 
-      this.discord.login({ clientId }).catch(reject);
+      this.discord.login({ clientId }).catch((error) => {
+        if (retryCount < this.maxReconnectAttempts) {
+          console.log(`Connection failed, will retry... (attempt ${retryCount + 1}/${this.maxReconnectAttempts})`);
+          this.reconnectWithBackoff(retryCount);
+        } else {
+          reject(error);
+        }
+      });
     });
+  }
+
+  /**
+   * Reconnect to Discord with exponential backoff
+   * @param {number} retryCount - Current retry attempt number
+   */
+  reconnectWithBackoff(retryCount = 0) {
+    if (retryCount >= this.maxReconnectAttempts) {
+      console.error(`Failed to reconnect after ${this.maxReconnectAttempts} attempts`);
+      return;
+    }
+
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
+    const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+    console.log(`Reconnecting in ${delay / 1000}s (attempt ${retryCount + 1}/${this.maxReconnectAttempts})...`);
+
+    setTimeout(() => {
+      // Create new client for reconnection
+      this.discord = new DiscordRPC.Client({ transport: 'ipc' });
+      this.connectDiscord(retryCount + 1).catch(() => {
+        // Error handling done in connectDiscord
+      });
+    }, delay);
   }
 
   /**
    * Start the main update loop
    */
   startUpdateLoop() {
-    console.log(`⏰ Starting update loop (interval: ${this.updateInterval / 1000}s, forced refresh: ${this.forceUpdateInterval / 60000}min)`);
+    console.log(`Starting update loop (interval: ${this.updateInterval / 1000}s, forced refresh: ${this.forceUpdateInterval / 60000}min)`);
 
     // Initial update
     this.updateStatus();
@@ -163,7 +229,7 @@ class DiscordStatusFusion {
    */
   async updateStatus() {
     if (this.isUpdating) {
-      log('⏳', 'Status update already in progress', 'verbose');
+      log('[SKIP]', 'Status update already in progress', 'verbose');
       return;
     }
 
@@ -175,7 +241,7 @@ class DiscordStatusFusion {
       const music = await this.music.getCurrentMusic();
 
       // Debug music detection
-      log('🎵', `Music detection result: ${music === null ? 'No music playing' : music}`, 'verbose');
+      log('[MUSIC]', `Music detection result: ${music === null ? 'No music playing' : music}`, 'verbose');
 
       // Check if we need to force an update (every 5 minutes)
       const now = Date.now();
@@ -187,10 +253,10 @@ class DiscordStatusFusion {
         this.spinner.stop();
 
         if (needsForceUpdate) {
-          console.log('🔄 Forced refresh (5 minutes elapsed), updating status...');
+          console.log('Forced refresh (5 minutes elapsed), updating status...');
           this.lastForceUpdate = now;
         } else {
-          console.log('📱 Apps or music changed, generating new status...');
+          console.log('Apps or music changed, generating new status...');
         }
 
         // Generate status with AI
@@ -202,21 +268,21 @@ class DiscordStatusFusion {
         this.lastApps = [...apps];
         this.lastMusic = music;
 
-        console.log(`🎯 Updated Discord status: ${status.details}`);
+        console.log(`Updated Discord status: ${status.details}`);
         if (status.state && status.state !== 'Idle') {
-          console.log(`   └─ ${status.state}`);
+          console.log(`   -> ${status.state}`);
         }
 
         // Restart spinner
         this.spinner.start('Running');
       } else {
-        log('⏸️', 'No changes detected, skipping LLM call', 'verbose');
+        log('[SKIP]', 'No changes detected, skipping LLM call', 'verbose');
       }
     } catch (error) {
-      console.error('❌ Error updating status:', error.message);
+      console.error('[ERROR] Error updating status:', error.message);
     } finally {
       this.isUpdating = false;
-      if (!this.spinner.isSpinning && !isVerboseMode) {
+      if (!this.spinner.isSpinning && !isVerboseMode && isTTY) {
         this.spinner.start('Running');
       }
     }
@@ -224,10 +290,15 @@ class DiscordStatusFusion {
 
 }
 
+// Validate configuration before starting
+if (!validateConfig()) {
+  process.exit(1);
+}
+
 // Start the application
 const app = new DiscordStatusFusion();
 app.start().catch(error => {
-  console.error('💥 Failed to start Discord Status Fusion:', error.message);
+  console.error('[FATAL] Failed to start Discord Status Fusion:', error.message);
   process.exit(1);
 });
 
@@ -242,6 +313,6 @@ process.on('SIGINT', () => {
       app.updateTimer = null;
     }
   }
-  console.log('\\n👋 Shutting down Discord Status Fusion...');
+  console.log('\nShutting down Discord Status Fusion...');
   process.exit(0);
 });

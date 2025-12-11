@@ -6,23 +6,25 @@
 
 AI-powered Discord Rich Presence that intelligently displays your current professional applications and music.
 
-## 📸 Preview
+## Preview
 
 <p align="center">
   <img src="src/images/status-fusion-preview.png" alt="Discord Status Fusion in action" width="400">
 </p>
 
-## ✨ Features
+## Features
 
-- **🤖 AI-Powered Status Generation**: Uses Gemini 2.5 Flash-Lite for intelligent status formatting
-- **🎯 Professional App Detection**: Automatically detects and displays work-relevant applications
-- **🎵 Music Integration**: Shows currently playing music from Apple Music and Spotify
-- **⚡ Smart Change Detection**: Only updates when your apps or music actually change
-- **🎮 Gaming Friendly**: Does not override gaming status from Steam, Discord games, etc.
-- **🔧 Simple Setup**: Minimal configuration required
-- **🌍 Cross-Platform**: Supports macOS, Windows, and Linux
+- **AI-Powered Status Generation**: Uses Gemini 2.5 Flash-Lite for intelligent status formatting
+- **Professional App Detection**: Automatically detects and displays work-relevant applications
+- **Music Integration**: Shows currently playing music from Apple Music and Spotify (macOS only)
+- **Smart Change Detection**: Only updates when your apps or music actually change
+- **Gaming Friendly**: Does not override gaming status from Steam, Discord games, etc.
+- **Simple Setup**: Minimal configuration required
+- **Cross-Platform**: Supports macOS (full), Windows and Linux (partial)
+- **Configurable Intervals**: Customize update and refresh intervals via environment variables
+- **Exponential Backoff**: Automatic reconnection with intelligent retry logic
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -53,17 +55,17 @@ AI-powered Discord Rich Presence that intelligently displays your current profes
    - Create a new API key
 
 4. **Configure API Key (Secure)**
-   
+
    **macOS:**
    ```bash
    security add-generic-password -s "GOOGLE_AI_API_KEY" -a "$(whoami)" -w "your-api-key-here"
    ```
-   
+
    **Windows:**
    ```cmd
    cmdkey /add:GOOGLE_AI_API_KEY /user:discord-status-fusion /pass:your-api-key-here
    ```
-   
+
    **Linux:**
    ```bash
    secret-tool store --label="Google AI API Key" service "GOOGLE_AI_API_KEY" username "discord-status-fusion"
@@ -86,15 +88,15 @@ AI-powered Discord Rich Presence that intelligently displays your current profes
    dsf start
    ```
 
-## 🎯 How It Works
+## How It Works
 
 1. **Process Detection**: Scans your running applications
 2. **Professional Filtering**: Identifies work-relevant software using a curated whitelist
 3. **AI Formatting**: Gemini AI intelligently selects and formats the best 4 apps
-4. **Music Detection**: Detects music from Apple Music and Spotify
+4. **Music Detection**: Detects music from Apple Music and Spotify (macOS only)
 5. **Discord Update**: Updates your Rich Presence with the generated status
 
-## 🛠️ Supported Applications
+## Supported Applications
 
 **Development Tools:** Cursor, VS Code, Xcode, Warp Terminal, IntelliJ, PyCharm, etc.
 
@@ -106,14 +108,14 @@ AI-powered Discord Rich Presence that intelligently displays your current profes
 
 **Browsers:** Chrome, Safari, Firefox, Arc, etc.
 
-## 📱 Example Status
+## Example Status
 
 ```
-🎯 Using Cursor + Photoshop + Safari + Excel
-   └─ ♪ Song Name by Artist on Apple Music
+Using Cursor + Photoshop + Safari + Excel
+   -> # Song Name by Artist on Apple Music
 ```
 
-## 🛠️ CLI Commands
+## CLI Commands
 
 After installing globally with `npm install -g .`, you can use:
 
@@ -126,7 +128,7 @@ dsf help    # Show help
 
 The daemon runs in the background and survives terminal closures. Logs are written to `discord-status-fusion.log`.
 
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -136,7 +138,11 @@ Create a `.env` file:
 # Required
 DISCORD_CLIENT_ID=your_discord_application_id_here
 
-# Optional
+# Optional - Update intervals (in milliseconds)
+UPDATE_INTERVAL=10000        # How often to check for changes (default: 10s)
+FORCE_UPDATE_INTERVAL=300000 # Force refresh interval (default: 5min)
+
+# Optional - Logging
 LOG_LEVEL=info  # Available: error, warn, info, debug, verbose
 ```
 
@@ -144,30 +150,66 @@ LOG_LEVEL=info  # Available: error, warn, info, debug, verbose
 
 To add support for a new professional application, edit the whitelist in `src/core/detector.js` and add the appropriate regex pattern.
 
-## 🔧 Troubleshooting
+## Platform Support
+
+| Feature | macOS | Windows | Linux |
+|---------|-------|---------|-------|
+| Process Detection | Yes | Yes | Yes |
+| Music Detection | Yes | No | No |
+| Keychain Storage | Yes | Yes | Yes |
+
+Note: Music detection requires AppleScript and is only available on macOS. Windows and Linux users will see a one-time informational message about this limitation.
+
+## Troubleshooting
 
 ### Common Issues
 
-**"No API key found"**: Ensure you've stored your Google AI API key in the system keychain using the commands above.
+**"DISCORD_CLIENT_ID not found"**: Ensure you've created a `.env` file with your Discord Application ID. The ID should be a 17-19 digit number.
 
-**"Discord connection failed"**: Make sure Discord is running and your Application ID is correct.
+**"No API key found"**: Ensure you've stored your Google AI API key in the system keychain using the commands above. Check the console output for specific instructions for your platform.
+
+**"Discord connection failed"**: Make sure Discord is running and your Application ID is correct. The application will automatically retry with exponential backoff.
 
 **"App not detected"**: Check if your application is in the professional apps whitelist in `src/core/detector.js`.
 
-## 🤝 Contributing
+## Development
+
+### Running Tests
+
+```bash
+npm test           # Run all tests
+npm test:watch     # Run tests in watch mode
+npm run lint       # Check code style
+npm run lint:fix   # Fix code style issues
+```
+
+### Development Mode
+
+```bash
+npm run dev        # Run with auto-restart on file changes
+npm start -- --verbose  # Run with detailed debug output
+```
+
+## Contributing
 
 Contributions are welcome! Please focus on:
 
 - Adding new professional applications to the whitelist
-- Improving cross-platform compatibility
+- Improving cross-platform compatibility (especially Windows/Linux music detection)
 - Bug fixes and optimizations
 - Documentation improvements
+- Adding more test coverage
 
-## 📄 License
+Before submitting a PR:
+1. Run `npm run lint` to check code style
+2. Run `npm test` to ensure all tests pass
+3. Test the application manually with `dsf start`
+
+## License
 
 MIT License - see LICENSE file for details.
 
-## 🔗 Links
+## Links
 
 - [GitHub Repository](https://github.com/Zollicoff/discord-status-fusion)
 - [Discord Developer Portal](https://discord.com/developers/applications)
