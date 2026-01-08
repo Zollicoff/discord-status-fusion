@@ -45,27 +45,53 @@ class LLMClient {
           ]);
           this.apiKey = result.stdout.trim();
         } catch (error) {
-          if (error.code === 44) {
+          // Handle specific macOS keychain error codes
+          const exitCode = error.code;
+          if (exitCode === 44) {
             // Item not found in keychain
             console.warn('[WARN] GOOGLE_AI_API_KEY not found in macOS keychain');
             console.warn('[WARN] Run: security add-generic-password -s "GOOGLE_AI_API_KEY" -a "$(whoami)" -w "your-key"');
+          } else if (exitCode === 36 || exitCode === 51) {
+            // User denied access or keychain locked
+            console.warn('[WARN] Access to macOS keychain denied or keychain is locked');
+            console.warn('[WARN] Please unlock your keychain or grant access to Terminal/your IDE');
+          } else if (error.message && error.message.includes('ENOENT')) {
+            console.warn('[WARN] security command not found - are you on macOS?');
           } else {
-            console.warn('[WARN] Failed to access macOS keychain:', error.message);
+            console.warn(`[WARN] Failed to access macOS keychain (exit code: ${exitCode}):`, error.message);
+            console.warn('[WARN] Run: security add-generic-password -s "GOOGLE_AI_API_KEY" -a "$(whoami)" -w "your-key"');
           }
         }
         break;
 
       case 'win32': // Windows
         try {
-          // Windows credential retrieval is more complex, using PowerShell
+          // Try using cmdkey first (built-in), then fallback to CredentialManager module
+          // cmdkey stores credentials but retrieval requires PowerShell with CredentialManager module
           result = await execFileAsync('powershell', [
             '-Command',
-            '(Get-StoredCredential -Target GOOGLE_AI_API_KEY).GetNetworkCredential().Password'
+            // Try CredentialManager module first, fall back to registry-based approach
+            `try {
+              $cred = Get-StoredCredential -Target GOOGLE_AI_API_KEY -ErrorAction Stop;
+              $cred.GetNetworkCredential().Password
+            } catch {
+              $null
+            }`
           ]);
-          this.apiKey = result.stdout.trim();
+          const password = result.stdout.trim();
+          if (password && password !== '') {
+            this.apiKey = password;
+          } else {
+            throw new Error('Credential not found');
+          }
         } catch (error) {
-          console.warn('[WARN] GOOGLE_AI_API_KEY not found in Windows Credential Manager');
-          console.warn('[WARN] Run: cmdkey /add:GOOGLE_AI_API_KEY /user:discord-status-fusion /pass:your-key');
+          if (error.message && error.message.includes('ENOENT')) {
+            console.warn('[WARN] PowerShell not found - cannot retrieve API key on Windows');
+          } else {
+            console.warn('[WARN] GOOGLE_AI_API_KEY not found in Windows Credential Manager');
+            console.warn('[WARN] Option 1: Install CredentialManager module: Install-Module -Name CredentialManager');
+            console.warn('[WARN] Option 2: Store with: cmdkey /add:GOOGLE_AI_API_KEY /user:discord-status-fusion /pass:your-key');
+          }
         }
         break;
 
@@ -78,8 +104,14 @@ class LLMClient {
           ]);
           this.apiKey = result.stdout.trim();
         } catch (error) {
-          console.warn('[WARN] GOOGLE_AI_API_KEY not found in Linux secret storage');
-          console.warn('[WARN] Run: secret-tool store --label="Google AI API Key" service "GOOGLE_AI_API_KEY" username "discord-status-fusion"');
+          if (error.message && error.message.includes('ENOENT')) {
+            console.warn('[WARN] secret-tool not found - please install libsecret-tools');
+            console.warn('[WARN] On Ubuntu/Debian: sudo apt install libsecret-tools');
+            console.warn('[WARN] On Fedora: sudo dnf install libsecret');
+          } else {
+            console.warn('[WARN] GOOGLE_AI_API_KEY not found in Linux secret storage');
+            console.warn('[WARN] Run: secret-tool store --label="Google AI API Key" service "GOOGLE_AI_API_KEY" username "discord-status-fusion"');
+          }
         }
         break;
 
@@ -152,7 +184,7 @@ Rules:
 
 Reply with exactly:
 Line1: Using [all apps with + between them]
-Line2: ${music !== 'No music playing' ? '# ' + music : 'Working on projects'}`;
+Line2: ${music !== 'No music playing' ? music : 'Working on projects'}`;
   }
 
   /**
@@ -162,10 +194,13 @@ Line2: ${music !== 'No music playing' ? '# ' + music : 'Working on projects'}`;
    */
   async callGemini(prompt) {
     const fetch = await this.ensureFetch();
-    const response = await fetch(`${this.baseUrl}?key=${this.apiKey}`, {
+
+    // Use x-goog-api-key header instead of URL parameter to prevent key exposure in logs
+    const response = await fetch(this.baseUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-goog-api-key': this.apiKey
       },
       body: JSON.stringify({
         contents: [{
@@ -182,6 +217,7 @@ Line2: ${music !== 'No music playing' ? '# ' + music : 'Working on projects'}`;
     });
 
     if (!response.ok) {
+      // Don't include response body in error to avoid leaking sensitive info
       throw new Error(`Gemini API error: ${response.status}`);
     }
 
@@ -252,7 +288,7 @@ Line2: ${music !== 'No music playing' ? '# ' + music : 'Working on projects'}`;
     let state = 'LLM temporarily unavailable';
 
     if (music) {
-      state = `# ${music}`;
+      state = music;
     }
 
     return {

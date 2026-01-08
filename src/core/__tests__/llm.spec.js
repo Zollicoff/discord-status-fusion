@@ -23,6 +23,74 @@ describe('LLMClient', () => {
     });
   });
 
+  describe('error handling', () => {
+    it('should return fallback status when API key is not loaded', async() => {
+      client.keyLoaded = true; // Simulate key loading attempted
+      client.apiKey = null; // But no key found
+
+      const result = await client.generateStatus(['Cursor'], null);
+      assert.strictEqual(result.details, 'Discord Status Fusion');
+      assert.ok(result.state.includes('unavailable'));
+    });
+
+    it('should return fallback status when rate limited', async() => {
+      client.keyLoaded = true;
+      client.apiKey = 'test-key';
+      client.lastCallTime = Date.now(); // Just called
+
+      const result = await client.generateStatus(['Cursor'], null);
+      // Should use fallback due to rate limiting
+      assert.strictEqual(result.details, 'Discord Status Fusion');
+    });
+
+    it('should handle API errors gracefully', async() => {
+      client.keyLoaded = true;
+      client.apiKey = 'invalid-key';
+      client.lastCallTime = 0; // Allow API call
+
+      // Mock fetch to simulate API error
+      client.fetchFn = async() => ({
+        ok: false,
+        status: 401
+      });
+
+      const result = await client.generateStatus(['Cursor'], null);
+      // Should return fallback on API error
+      assert.strictEqual(result.details, 'Discord Status Fusion');
+    });
+
+    it('should handle malformed API responses', async() => {
+      client.keyLoaded = true;
+      client.apiKey = 'test-key';
+      client.lastCallTime = 0;
+
+      // Mock fetch to return malformed response
+      client.fetchFn = async() => ({
+        ok: true,
+        json: async() => ({ candidates: [] }) // Empty candidates
+      });
+
+      const result = await client.generateStatus(['Cursor'], null);
+      // Should return fallback on malformed response
+      assert.strictEqual(result.details, 'Discord Status Fusion');
+    });
+
+    it('should handle network errors gracefully', async() => {
+      client.keyLoaded = true;
+      client.apiKey = 'test-key';
+      client.lastCallTime = 0;
+
+      // Mock fetch to throw network error
+      client.fetchFn = async() => {
+        throw new Error('Network error');
+      };
+
+      const result = await client.generateStatus(['Cursor'], null);
+      // Should return fallback on network error
+      assert.strictEqual(result.details, 'Discord Status Fusion');
+    });
+  });
+
   describe('buildPrompt', () => {
     it('should include all apps in prompt', () => {
       const apps = ['Cursor', 'Chrome', 'Figma'];

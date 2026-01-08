@@ -12,10 +12,47 @@ const isVerboseMode = args.includes('--verbose');
 // Check if stdout is a TTY (not redirected to file)
 const isTTY = process.stdout.isTTY;
 
-// Simple logging utility
-function log(prefix, message, level = 'normal') {
-  if (!isVerboseMode && level === 'verbose') return;
-  console.log(prefix, message);
+// Log levels in order of verbosity
+const LOG_LEVELS = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  debug: 3,
+  verbose: 4
+};
+
+// Get configured log level (default: info, verbose mode overrides to verbose)
+const configuredLevel = isVerboseMode ? 'verbose' : (process.env.LOG_LEVEL || 'info').toLowerCase();
+const currentLogLevel = LOG_LEVELS[configuredLevel] !== undefined ? LOG_LEVELS[configuredLevel] : LOG_LEVELS.info;
+
+/**
+ * Parse an integer from environment variable with validation
+ * @param {string|undefined} value - Environment variable value
+ * @param {number} defaultValue - Default value if parsing fails
+ * @param {number} minValue - Minimum allowed value
+ * @returns {number} Parsed integer or default value
+ */
+function parseEnvInt(value, defaultValue, minValue = 1) {
+  if (value === undefined || value === '') return defaultValue;
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed) || parsed < minValue) {
+    console.warn(`[WARN] Invalid environment variable value "${value}", using default: ${defaultValue}`);
+    return defaultValue;
+  }
+  return parsed;
+}
+
+/**
+ * Log a message if the level is at or below the configured level
+ * @param {string} prefix - Log prefix (e.g., '[INFO]')
+ * @param {string} message - Message to log
+ * @param {string} level - Log level (error, warn, info, debug, verbose)
+ */
+function log(prefix, message, level = 'info') {
+  const levelNum = LOG_LEVELS[level] !== undefined ? LOG_LEVELS[level] : LOG_LEVELS.info;
+  if (levelNum <= currentLogLevel) {
+    console.log(prefix, message);
+  }
 }
 
 // Simple spinner for showing running status (only in TTY mode)
@@ -107,9 +144,9 @@ class DiscordStatusFusion {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 10;
 
-    // Configurable intervals via environment variables
-    this.updateInterval = parseInt(process.env.UPDATE_INTERVAL, 10) || 10000; // Default: 10 seconds
-    this.forceUpdateInterval = parseInt(process.env.FORCE_UPDATE_INTERVAL, 10) || 300000; // Default: 5 minutes
+    // Configurable intervals via environment variables (with validation)
+    this.updateInterval = parseEnvInt(process.env.UPDATE_INTERVAL, 10000, 1000); // Default: 10s, min: 1s
+    this.forceUpdateInterval = parseEnvInt(process.env.FORCE_UPDATE_INTERVAL, 300000, 10000); // Default: 5min, min: 10s
     this.lastForceUpdate = 0;
   }
 
@@ -182,8 +219,8 @@ class DiscordStatusFusion {
     setTimeout(() => {
       // Create new client for reconnection
       this.discord = new DiscordRPC.Client({ transport: 'ipc' });
-      this.connectDiscord(retryCount + 1).catch(() => {
-        // Error handling done in connectDiscord
+      this.connectDiscord(retryCount + 1).catch((error) => {
+        console.error(`[ERROR] Reconnection failed after ${this.maxReconnectAttempts} attempts:`, error.message);
       });
     }, delay);
   }
@@ -299,6 +336,23 @@ if (!validateConfig()) {
 const app = new DiscordStatusFusion();
 app.start().catch(error => {
   console.error('[FATAL] Failed to start Discord Status Fusion:', error.message);
+  process.exit(1);
+});
+
+// Global error handlers to catch unexpected errors
+process.on('unhandledRejection', (reason, _promise) => {
+  console.error('[ERROR] Unhandled Promise Rejection:', reason);
+  // Don't exit - try to continue running
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught Exception:', error.message);
+  console.error(error.stack);
+  // Clean up and exit for uncaught exceptions
+  if (app) {
+    if (app.spinner) app.spinner.stop();
+    if (app.updateTimer) clearInterval(app.updateTimer);
+  }
   process.exit(1);
 });
 

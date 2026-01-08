@@ -1,4 +1,7 @@
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Music Detection Service
@@ -24,20 +27,15 @@ class MusicDetector {
       return null;
     }
 
-    try {
-      // Try Apple Music first (native macOS)
-      const appleMusic = await this.getAppleMusic();
-      if (appleMusic) return appleMusic;
+    // Try Apple Music first, then Spotify - handle each independently
+    // so a failure in one doesn't prevent trying the other
+    const appleMusic = await this.getAppleMusic();
+    if (appleMusic) return appleMusic;
 
-      // Try Spotify
-      const spotify = await this.getSpotify();
-      if (spotify) return spotify;
+    const spotify = await this.getSpotify();
+    if (spotify) return spotify;
 
-      return null;
-    } catch (error) {
-      console.log('[MUSIC] Music detection error:', error.message);
-      return null;
-    }
+    return null;
   }
 
   /**
@@ -55,21 +53,23 @@ class MusicDetector {
       end tell
     `;
 
-    return new Promise((resolve) => {
-      exec(`osascript -e '${script}'`, (error, stdout) => {
-        if (error || !stdout.trim()) {
-          resolve(null);
-          return;
-        }
+    try {
+      // Use execFile with array arguments to prevent command injection
+      const { stdout } = await execFileAsync('osascript', ['-e', script]);
+      if (!stdout || !stdout.trim()) {
+        return null;
+      }
 
-        // Clean up the output and ensure consistent format
-        let result = stdout.trim();
-        if (result && !result.includes(' on Apple Music')) {
-          result += ' on Apple Music';
-        }
-        resolve(result);
-      });
-    });
+      // Clean up the output and ensure consistent format
+      let result = stdout.trim();
+      if (result && !result.includes(' on Apple Music')) {
+        result += ' on Apple Music';
+      }
+      return result;
+    } catch {
+      // AppleScript errors (app not running, not playing, etc.) are expected
+      return null;
+    }
   }
 
   /**
@@ -87,15 +87,17 @@ class MusicDetector {
       end tell
     `;
 
-    return new Promise((resolve) => {
-      exec(`osascript -e '${script}'`, (error, stdout) => {
-        if (error || !stdout.trim()) {
-          resolve(null);
-          return;
-        }
-        resolve(stdout.trim());
-      });
-    });
+    try {
+      // Use execFile with array arguments to prevent command injection
+      const { stdout } = await execFileAsync('osascript', ['-e', script]);
+      if (!stdout || !stdout.trim()) {
+        return null;
+      }
+      return stdout.trim();
+    } catch {
+      // AppleScript errors (app not running, not playing, etc.) are expected
+      return null;
+    }
   }
 }
 

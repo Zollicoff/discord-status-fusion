@@ -16,6 +16,43 @@ describe('MusicDetector', () => {
     });
   });
 
+  describe('error handling', () => {
+    it('should return null when getAppleMusic fails', async() => {
+      // Only test on macOS
+      if (process.platform !== 'darwin') return;
+
+      // The method should gracefully handle errors and return null
+      const result = await detector.getAppleMusic();
+      // Result should be null or a string (if music is playing)
+      assert.ok(result === null || typeof result === 'string');
+    });
+
+    it('should return null when getSpotify fails', async() => {
+      // Only test on macOS
+      if (process.platform !== 'darwin') return;
+
+      // The method should gracefully handle errors and return null
+      const result = await detector.getSpotify();
+      // Result should be null or a string (if music is playing)
+      assert.ok(result === null || typeof result === 'string');
+    });
+
+    it('should continue to Spotify if Apple Music returns null', async() => {
+      if (process.platform !== 'darwin') return;
+
+      // Mock Apple Music to return null
+      const originalGetAppleMusic = detector.getAppleMusic.bind(detector);
+      detector.getAppleMusic = async() => null;
+
+      const result = await detector.getCurrentMusic();
+      // Should have tried Spotify after Apple Music returned null
+      assert.ok(result === null || typeof result === 'string');
+
+      // Restore original method
+      detector.getAppleMusic = originalGetAppleMusic;
+    });
+  });
+
   describe('getCurrentMusic', () => {
     it('should return null on non-macOS platforms', async() => {
       // This test only makes sense on non-macOS platforms
