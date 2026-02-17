@@ -177,52 +177,40 @@ class DiscordStatusFusion {
   async connectDiscord(retryCount = 0) {
     const clientId = process.env.DISCORD_CLIENT_ID;
 
-    console.log(`Connecting to Discord (Client ID: ${clientId})...`);
+    if (retryCount === 0) {
+      console.log(`Connecting to Discord (Client ID: ${clientId})...`);
+    }
 
     return new Promise((resolve, reject) => {
       this.discord.on('ready', () => {
         console.log('Connected to Discord RPC');
-        // Successfully connected
         resolve();
       });
 
       this.discord.on('disconnected', () => {
         console.log('Discord disconnected, attempting to reconnect...');
-        this.reconnectWithBackoff();
+        this.discord = new DiscordRPC.Client({ transport: 'ipc' });
+        this.connectDiscord().catch((error) => {
+          console.error('[ERROR] Reconnection failed:', error.message);
+        });
       });
 
       this.discord.login({ clientId }).catch((error) => {
-        if (retryCount < this.maxReconnectAttempts) {
-          console.log(`Connection failed, will retry... (attempt ${retryCount + 1}/${this.maxReconnectAttempts})`);
-          this.reconnectWithBackoff(retryCount);
-        } else {
+        if (retryCount >= this.maxReconnectAttempts) {
           reject(error);
+          return;
         }
+
+        // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+        console.log(`Reconnecting in ${delay / 1000}s (attempt ${retryCount + 1}/${this.maxReconnectAttempts})...`);
+
+        setTimeout(() => {
+          this.discord = new DiscordRPC.Client({ transport: 'ipc' });
+          this.connectDiscord(retryCount + 1).then(resolve, reject);
+        }, delay);
       });
     });
-  }
-
-  /**
-   * Reconnect to Discord with exponential backoff
-   * @param {number} retryCount - Current retry attempt number
-   */
-  reconnectWithBackoff(retryCount = 0) {
-    if (retryCount >= this.maxReconnectAttempts) {
-      console.error(`Failed to reconnect after ${this.maxReconnectAttempts} attempts`);
-      return;
-    }
-
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
-    const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
-    console.log(`Reconnecting in ${delay / 1000}s (attempt ${retryCount + 1}/${this.maxReconnectAttempts})...`);
-
-    setTimeout(() => {
-      // Create new client for reconnection
-      this.discord = new DiscordRPC.Client({ transport: 'ipc' });
-      this.connectDiscord(retryCount + 1).catch((error) => {
-        console.error(`[ERROR] Reconnection failed after ${this.maxReconnectAttempts} attempts:`, error.message);
-      });
-    }, delay);
   }
 
   /**

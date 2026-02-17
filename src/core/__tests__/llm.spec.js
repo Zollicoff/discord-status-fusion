@@ -29,8 +29,8 @@ describe('LLMClient', () => {
       client.apiKey = null; // But no key found
 
       const result = await client.generateStatus(['Cursor'], null);
-      assert.strictEqual(result.details, 'Discord Status Fusion');
-      assert.ok(result.state.includes('unavailable'));
+      assert.strictEqual(result.details, 'Using Cursor');
+      assert.strictEqual(result.state, 'Working on projects');
     });
 
     it('should return fallback status when rate limited', async() => {
@@ -40,7 +40,7 @@ describe('LLMClient', () => {
 
       const result = await client.generateStatus(['Cursor'], null);
       // Should use fallback due to rate limiting
-      assert.strictEqual(result.details, 'Discord Status Fusion');
+      assert.strictEqual(result.details, 'Using Cursor');
     });
 
     it('should handle API errors gracefully', async() => {
@@ -56,7 +56,7 @@ describe('LLMClient', () => {
 
       const result = await client.generateStatus(['Cursor'], null);
       // Should return fallback on API error
-      assert.strictEqual(result.details, 'Discord Status Fusion');
+      assert.strictEqual(result.details, 'Using Cursor');
     });
 
     it('should handle malformed API responses', async() => {
@@ -72,7 +72,7 @@ describe('LLMClient', () => {
 
       const result = await client.generateStatus(['Cursor'], null);
       // Should return fallback on malformed response
-      assert.strictEqual(result.details, 'Discord Status Fusion');
+      assert.strictEqual(result.details, 'Using Cursor');
     });
 
     it('should handle network errors gracefully', async() => {
@@ -87,7 +87,7 @@ describe('LLMClient', () => {
 
       const result = await client.generateStatus(['Cursor'], null);
       // Should return fallback on network error
-      assert.strictEqual(result.details, 'Discord Status Fusion');
+      assert.strictEqual(result.details, 'Using Cursor');
     });
   });
 
@@ -192,7 +192,7 @@ LINE2: Coding`;
   });
 
   describe('fallbackStatus', () => {
-    it('should return valid status object', () => {
+    it('should return valid status object with no apps', () => {
       const result = client.fallbackStatus([], null);
 
       assert.strictEqual(result.details, 'Discord Status Fusion');
@@ -200,14 +200,19 @@ LINE2: Coding`;
       assert.ok(result.largeImageKey);
     });
 
+    it('should use app names when provided', () => {
+      const result = client.fallbackStatus(['Cursor', 'Chrome'], null);
+      assert.strictEqual(result.details, 'Using Cursor + Chrome');
+    });
+
     it('should include music when provided', () => {
       const result = client.fallbackStatus([], 'Song by Artist');
       assert.ok(result.state.includes('Song by Artist'));
     });
 
-    it('should show unavailable message without music', () => {
+    it('should show working message without music', () => {
       const result = client.fallbackStatus([], null);
-      assert.ok(result.state.includes('unavailable'));
+      assert.strictEqual(result.state, 'Working on projects');
     });
   });
 });

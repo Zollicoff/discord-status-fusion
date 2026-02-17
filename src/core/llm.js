@@ -286,10 +286,12 @@ Line2: ${music ? music : 'Working on projects'}`;
    * @returns {Object} Discord status object
    */
   fallbackStatus(apps, music, startTimestamp) {
-    // Simple fallback status when LLM is unavailable
-    const details = 'Discord Status Fusion';
-    let state = 'LLM temporarily unavailable';
+    let details = 'Discord Status Fusion';
+    if (apps && apps.length > 0) {
+      details = 'Using ' + apps.join(' + ');
+    }
 
+    let state = 'Working on projects';
     if (music) {
       state = music;
     }

@@ -141,4 +141,4 @@ The project uses Node.js built-in test runner (`node:test`). Tests are located i
 - `llm.spec.js`: Tests for LLM client, prompt building, and response parsing
 - `music.spec.js`: Tests for music detection
 
-Run tests with `npm test`. All 50 tests should pass.
+Run tests with `npm test`. All 51 tests should pass.
