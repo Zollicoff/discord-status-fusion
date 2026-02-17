@@ -141,13 +141,13 @@ class DiscordStatusFusion {
     this.lastMusic = null;
     this.isUpdating = false;
     this.updateTimer = null;
-    this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 10;
 
     // Configurable intervals via environment variables (with validation)
     this.updateInterval = parseEnvInt(process.env.UPDATE_INTERVAL, 10000, 1000); // Default: 10s, min: 1s
     this.forceUpdateInterval = parseEnvInt(process.env.FORCE_UPDATE_INTERVAL, 300000, 10000); // Default: 5min, min: 10s
-    this.lastForceUpdate = 0;
+    this.lastForceUpdate = Date.now();
+    this.startTimestamp = Date.now();
   }
 
   /**
@@ -182,7 +182,7 @@ class DiscordStatusFusion {
     return new Promise((resolve, reject) => {
       this.discord.on('ready', () => {
         console.log('Connected to Discord RPC');
-        this.reconnectAttempts = 0; // Reset on successful connection
+        // Successfully connected
         resolve();
       });
 
@@ -280,7 +280,7 @@ class DiscordStatusFusion {
       // Debug music detection
       log('[MUSIC]', `Music detection result: ${music === null ? 'No music playing' : music}`, 'verbose');
 
-      // Check if we need to force an update (every 5 minutes)
+      // Check if we need to force an update
       const now = Date.now();
       const timeSinceLastForce = now - this.lastForceUpdate;
       const needsForceUpdate = timeSinceLastForce >= this.forceUpdateInterval;
@@ -297,7 +297,7 @@ class DiscordStatusFusion {
         }
 
         // Generate status with AI
-        const status = await this.llm.generateStatus(apps, music);
+        const status = await this.llm.generateStatus(apps, music, this.startTimestamp);
 
         // Update Discord and cache the new state
         await this.discord.setActivity(status);

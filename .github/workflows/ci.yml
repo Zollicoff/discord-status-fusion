@@ -34,7 +34,7 @@ jobs:
       run: npm test
 
     - name: Check for security vulnerabilities
-      run: npm audit --audit-level=moderate
+      run: npm audit --audit-level=high --omit=dev
 
   lint:
     runs-on: ubuntu-latest

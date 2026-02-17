@@ -136,9 +136,10 @@ class LLMClient {
    * Generate Discord status using LLM
    * @param {string[]} apps - Array of running application names
    * @param {string|null} music - Current music playing or null
+   * @param {number} [startTimestamp] - Stable timestamp for Discord elapsed time
    * @returns {Promise<Object>} Discord status object
    */
-  async generateStatus(apps, music) {
+  async generateStatus(apps, music, startTimestamp) {
     await this.loadApiKey();
 
     if (!this.apiKey) {
@@ -156,13 +157,13 @@ class LLMClient {
       const prompt = this.buildPrompt(apps, music);
       const response = await this.callGemini(prompt);
       this.lastCallTime = now;
-      return this.parseResponse(response);
+      return this.parseResponse(response, startTimestamp);
     } catch (error) {
       console.error('[ERROR] LLM error:', error.message);
       if (error.message.includes('429')) {
         console.warn('[WARN] Rate limited - using fallback');
       }
-      return this.fallbackStatus(apps, music);
+      return this.fallbackStatus(apps, music, startTimestamp);
     }
   }
 
@@ -244,9 +245,10 @@ Line2: ${music ? music : 'Working on projects'}`;
   /**
    * Parse LLM response into Discord status format
    * @param {string} response - Raw LLM response
+   * @param {number} [startTimestamp] - Stable timestamp for Discord elapsed time
    * @returns {Object} Discord status object
    */
-  parseResponse(response) {
+  parseResponse(response, startTimestamp) {
     try {
       const lines = response.split('\n').filter(line => line.trim());
 
@@ -268,11 +270,11 @@ Line2: ${music ? music : 'Working on projects'}`;
         largeImageText: 'Discord Status Fusion',
         smallImageKey: 'active',
         smallImageText: 'AI-Generated',
-        startTimestamp: Date.now()
+        startTimestamp: startTimestamp || Date.now()
       };
     } catch (error) {
       console.error('[ERROR] Failed to parse LLM response:', error.message);
-      return this.fallbackStatus([], null);
+      return this.fallbackStatus([], null, startTimestamp);
     }
   }
 
@@ -280,9 +282,10 @@ Line2: ${music ? music : 'Working on projects'}`;
    * Fallback status when LLM is unavailable
    * @param {string[]} apps - Running applications
    * @param {string|null} music - Current music
+   * @param {number} [startTimestamp] - Stable timestamp for Discord elapsed time
    * @returns {Object} Discord status object
    */
-  fallbackStatus(apps, music) {
+  fallbackStatus(apps, music, startTimestamp) {
     // Simple fallback status when LLM is unavailable
     const details = 'Discord Status Fusion';
     let state = 'LLM temporarily unavailable';
@@ -298,7 +301,7 @@ Line2: ${music ? music : 'Working on projects'}`;
       largeImageText: 'Discord Status Fusion',
       smallImageKey: 'active',
       smallImageText: 'Fallback Mode',
-      startTimestamp: Date.now()
+      startTimestamp: startTimestamp || Date.now()
     };
   }
 

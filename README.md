@@ -178,7 +178,7 @@ Note: Music detection requires AppleScript and is only available on macOS. Windo
 
 ```bash
 npm test           # Run all tests
-npm test:watch     # Run tests in watch mode
+npm run test:watch # Run tests in watch mode
 npm run lint       # Check code style
 npm run lint:fix   # Fix code style issues
 ```
