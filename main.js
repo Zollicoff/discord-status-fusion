@@ -253,7 +253,7 @@ class DiscordStatusFusion {
    */
   hasAppsOrMusicChanged(apps, music) {
     // Check if app list changed
-    const appsChanged = JSON.stringify(apps.sort()) !== JSON.stringify(this.lastApps.sort());
+    const appsChanged = JSON.stringify([...apps].sort()) !== JSON.stringify([...this.lastApps].sort());
 
     // Check if music changed
     const musicChanged = music !== this.lastMusic;
@@ -290,7 +290,7 @@ class DiscordStatusFusion {
         this.spinner.stop();
 
         if (needsForceUpdate) {
-          console.log('Forced refresh (5 minutes elapsed), updating status...');
+          console.log(`Forced refresh (${this.forceUpdateInterval / 60000}min elapsed), updating status...`);
           this.lastForceUpdate = now;
         } else {
           console.log('Apps or music changed, generating new status...');
@@ -357,7 +357,7 @@ process.on('uncaughtException', (error) => {
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+function shutdown(signal) {
   if (app) {
     if (app.spinner) {
       app.spinner.stop();
@@ -367,6 +367,9 @@ process.on('SIGINT', () => {
       app.updateTimer = null;
     }
   }
-  console.log('\nShutting down Discord Status Fusion...');
+  console.log(`\nShutting down Discord Status Fusion (${signal})...`);
   process.exit(0);
-});
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

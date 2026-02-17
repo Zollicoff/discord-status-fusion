@@ -184,7 +184,7 @@ Rules:
 
 Reply with exactly:
 Line1: Using [all apps with + between them]
-Line2: ${music !== 'No music playing' ? music : 'Working on projects'}`;
+Line2: ${music ? music : 'Working on projects'}`;
   }
 
   /**

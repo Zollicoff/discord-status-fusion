@@ -112,7 +112,7 @@ describe('LLMClient', () => {
     });
 
     it('should show working message when no music', () => {
-      const prompt = client.buildPrompt(['Cursor'], 'No music playing');
+      const prompt = client.buildPrompt(['Cursor'], null);
       assert.ok(prompt.includes('Working on projects'));
     });
 
