@@ -24,10 +24,12 @@ function start() {
 
   console.log('Starting Discord Status Fusion...');
 
-  // Use nohup command directly for true daemon behavior
-  const child = spawn('nohup', ['node', MAIN_FILE], {
+  const logFd = fs.openSync(LOG_FILE, 'a');
+
+  // Detached child process keeps running after this CLI exits.
+  const child = spawn(process.execPath, [MAIN_FILE], {
     detached: true,
-    stdio: ['ignore', 'ignore', 'ignore'],
+    stdio: ['ignore', logFd, logFd],
     cwd: path.dirname(MAIN_FILE)
   });
 

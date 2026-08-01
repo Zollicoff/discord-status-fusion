@@ -117,11 +117,17 @@ describe('LLMClient', () => {
     });
 
     it('should include formatting rules', () => {
-      const prompt = client.buildPrompt(['code'], null);
-      assert.ok(prompt.includes('Rename'));
-      assert.ok(prompt.includes('stable'));
-      assert.ok(prompt.includes('Warp'));
+      const prompt = client.buildPrompt(['VS Code'], null);
+      assert.ok(prompt.includes('Do not add, remove, rename, infer, or duplicate apps'));
       assert.ok(prompt.includes('VS Code'));
+      assert.ok(!prompt.includes('stable'));
+      assert.ok(!prompt.includes('Warp'));
+    });
+
+    it('should dedupe apps before building prompt', () => {
+      const prompt = client.buildPrompt(['VS Code', 'VS Code', 'Codex'], null);
+      assert.ok(prompt.includes('Line1: Using VS Code + Codex'));
+      assert.ok(!prompt.includes('VS Code + VS Code'));
     });
   });
 
@@ -189,6 +195,26 @@ LINE2: Coding`;
       assert.ok(result.smallImageText);
       assert.ok(result.startTimestamp);
     });
+
+    it('should ignore hallucinated app details when source apps are provided', () => {
+      const response = `Line1: Using Warp + VS Code + Warp + Warp
+Line2: Working on projects`;
+
+      const result = client.parseResponse(response, Date.now(), ['VS Code', 'Codex'], null);
+
+      assert.strictEqual(result.details, 'Using VS Code + Codex');
+      assert.strictEqual(result.state, 'Working on projects');
+    });
+
+    it('should keep music as the source of truth for state', () => {
+      const response = `Line1: Using Warp
+Line2: Totally different song`;
+
+      const result = client.parseResponse(response, Date.now(), ['Codex'], 'Actual Song by Artist on Apple Music');
+
+      assert.strictEqual(result.details, 'Using Codex');
+      assert.strictEqual(result.state, 'Actual Song by Artist on Apple Music');
+    });
   });
 
   describe('fallbackStatus', () => {
@@ -205,6 +231,11 @@ LINE2: Coding`;
       assert.strictEqual(result.details, 'Using Cursor + Chrome');
     });
 
+    it('should dedupe duplicate app names', () => {
+      const result = client.fallbackStatus(['Warp', 'Warp', 'Codex', 'codex'], null);
+      assert.strictEqual(result.details, 'Using Warp + Codex');
+    });
+
     it('should include music when provided', () => {
       const result = client.fallbackStatus([], 'Song by Artist');
       assert.ok(result.state.includes('Song by Artist'));
@@ -213,6 +244,33 @@ LINE2: Coding`;
     it('should show working message without music', () => {
       const result = client.fallbackStatus([], null);
       assert.strictEqual(result.state, 'Working on projects');
+    });
+  });
+
+  describe('generateStatus', () => {
+    it('should not let Gemini override detected apps', async() => {
+      client.keyLoaded = true;
+      client.apiKey = 'test-key';
+      client.lastCallTime = 0;
+
+      client.fetchFn = async() => ({
+        ok: true,
+        json: async() => ({
+          candidates: [{
+            content: {
+              parts: [{
+                text: 'Line1: Using Warp + VS Code + Warp + Warp\nLine2: Working on projects'
+              }]
+            }
+          }]
+        })
+      });
+
+      const result = await client.generateStatus(['VS Code', 'Codex'], null, 123);
+
+      assert.strictEqual(result.details, 'Using VS Code + Codex');
+      assert.strictEqual(result.state, 'Working on projects');
+      assert.strictEqual(result.startTimestamp, 123);
     });
   });
 });

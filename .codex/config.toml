@@ -1,0 +1,19 @@
+[mcp_servers.brave_search]
+command = "/Users/zollicoff/.local/bin/mcp-proxy"
+args = ["http://127.0.0.1:8081/sse"]
+
+[mcp_servers.github]
+command = "/Users/zollicoff/.local/bin/mcp-proxy"
+args = ["http://127.0.0.1:8080/sse"]
+
+[mcp_servers.memory]
+command = "/Users/zollicoff/.local/bin/mcp-proxy"
+args = ["http://127.0.0.1:8082/sse"]
+
+[mcp_servers.sequential_thinking]
+command = "/Users/zollicoff/.local/bin/mcp-proxy"
+args = ["http://127.0.0.1:8083/sse"]
+
+[mcp_servers.supabase]
+command = "/Users/zollicoff/.local/bin/mcp-proxy"
+args = ["http://127.0.0.1:8084/sse"]

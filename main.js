@@ -146,7 +146,7 @@ class DiscordStatusFusion {
     // Configurable intervals via environment variables (with validation)
     this.updateInterval = parseEnvInt(process.env.UPDATE_INTERVAL, 10000, 1000); // Default: 10s, min: 1s
     this.forceUpdateInterval = parseEnvInt(process.env.FORCE_UPDATE_INTERVAL, 300000, 10000); // Default: 5min, min: 10s
-    this.lastForceUpdate = Date.now();
+    this.lastForceUpdate = 0;
     this.startTimestamp = Date.now();
   }
 
@@ -281,10 +281,10 @@ class DiscordStatusFusion {
           console.log(`Forced refresh (${this.forceUpdateInterval / 60000}min elapsed), updating status...`);
           this.lastForceUpdate = now;
         } else {
-          console.log('Apps or music changed, generating new status...');
+          console.log('Apps or music changed, updating status...');
         }
 
-        // Generate status with AI
+        // Build status from the normalized app/music snapshot.
         const status = await this.llm.generateStatus(apps, music, this.startTimestamp);
 
         // Update Discord and cache the new state

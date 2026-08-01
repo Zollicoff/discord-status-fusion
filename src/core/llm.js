@@ -143,21 +143,21 @@ class LLMClient {
     await this.loadApiKey();
 
     if (!this.apiKey) {
-      return this.fallbackStatus(apps, music);
+      return this.fallbackStatus(apps, music, startTimestamp);
     }
 
     // Rate limiting - don't call API too frequently
     const now = Date.now();
     if (now - this.lastCallTime < this.minCallInterval) {
       // Use fallback if called too recently
-      return this.fallbackStatus(apps, music);
+      return this.fallbackStatus(apps, music, startTimestamp);
     }
 
     try {
       const prompt = this.buildPrompt(apps, music);
       const response = await this.callGemini(prompt);
       this.lastCallTime = now;
-      return this.parseResponse(response, startTimestamp);
+      return this.parseResponse(response, startTimestamp, apps, music);
     } catch (error) {
       console.error('[ERROR] LLM error:', error.message);
       if (error.message.includes('429')) {
@@ -174,18 +174,23 @@ class LLMClient {
    * @returns {string} Formatted prompt
    */
   buildPrompt(apps, music) {
-    const appsText = apps.length > 0 ? apps.join(', ') : 'No applications detected';
+    const normalizedApps = this.normalizeApps(apps);
+    const details = this.formatStatusDetails(apps);
+    const state = music || 'Working on projects';
+    const appsText = normalizedApps.length > 0 ?
+      normalizedApps.join(', ') :
+      'No applications detected';
 
-    return `Create a Discord status from these apps: ${appsText}
+    return `Create a Discord status from these normalized app names: ${appsText}
 
 Rules:
-- Include ALL apps listed above
-- Rename: "stable" to "Warp", "code" to "VS Code"
-- Format: "Using App1 + App2 + App3"
+- Do not add, remove, rename, infer, or duplicate apps
+- Line1 must be exactly: ${details}
+- Line2 must be exactly: ${state}
 
 Reply with exactly:
-Line1: Using [all apps with + between them]
-Line2: ${music ? music : 'Working on projects'}`;
+Line1: ${details}
+Line2: ${state}`;
   }
 
   /**
@@ -246,22 +251,29 @@ Line2: ${music ? music : 'Working on projects'}`;
    * Parse LLM response into Discord status format
    * @param {string} response - Raw LLM response
    * @param {number} [startTimestamp] - Stable timestamp for Discord elapsed time
+   * @param {string[]} [apps] - Running applications used as source of truth
+   * @param {string|null} [music] - Current music used as source of truth
    * @returns {Object} Discord status object
    */
-  parseResponse(response, startTimestamp) {
+  parseResponse(response, startTimestamp, apps = null, music = null) {
     try {
       const lines = response.split('\n').filter(line => line.trim());
 
-      let details = 'Discord Status Fusion';
-      let state = 'AI-powered status';
+      let parsedDetails = 'Discord Status Fusion';
+      let parsedState = 'AI-powered status';
 
       for (const line of lines) {
         if (line.toLowerCase().includes('line1:')) {
-          details = line.replace(/line1:\s*/i, '').trim();
+          parsedDetails = line.replace(/line1:\s*/i, '').trim();
         } else if (line.toLowerCase().includes('line2:')) {
-          state = line.replace(/line2:\s*/i, '').trim();
+          parsedState = line.replace(/line2:\s*/i, '').trim();
         }
       }
+
+      const details = Array.isArray(apps) ?
+        this.formatStatusDetails(apps) :
+        parsedDetails;
+      const state = music || (Array.isArray(apps) ? 'Working on projects' : parsedState);
 
       return {
         details: this.truncateText(details, 128),
@@ -286,15 +298,8 @@ Line2: ${music ? music : 'Working on projects'}`;
    * @returns {Object} Discord status object
    */
   fallbackStatus(apps, music, startTimestamp) {
-    let details = 'Discord Status Fusion';
-    if (apps && apps.length > 0) {
-      details = 'Using ' + apps.join(' + ');
-    }
-
-    let state = 'Working on projects';
-    if (music) {
-      state = music;
-    }
+    const details = this.formatStatusDetails(apps);
+    const state = music || 'Working on projects';
 
     return {
       details: this.truncateText(details, 128),
@@ -316,6 +321,51 @@ Line2: ${music ? music : 'Working on projects'}`;
   truncateText(text, maxLength) {
     if (!text || text.length <= maxLength) return text;
     return text.substring(0, maxLength - 3) + '...';
+  }
+
+  /**
+   * Normalize and dedupe app names before status generation.
+   * @param {string[]} apps - Running applications
+   * @returns {string[]} Deduped app names
+   */
+  normalizeApps(apps) {
+    if (!Array.isArray(apps)) {
+      return [];
+    }
+
+    const seen = new Set();
+    const normalized = [];
+
+    for (const app of apps) {
+      if (!app || typeof app !== 'string') {
+        continue;
+      }
+
+      const name = app.trim();
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      normalized.push(name);
+    }
+
+    return normalized;
+  }
+
+  /**
+   * Build the deterministic Discord details line.
+   * @param {string[]} apps - Running applications
+   * @returns {string} Discord details text
+   */
+  formatStatusDetails(apps) {
+    const normalizedApps = this.normalizeApps(apps);
+    if (normalizedApps.length === 0) {
+      return 'Discord Status Fusion';
+    }
+
+    return 'Using ' + normalizedApps.join(' + ');
   }
 }
 
