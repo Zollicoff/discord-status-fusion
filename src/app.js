@@ -9,7 +9,7 @@ class StatusFusionApp {
   constructor(options) {
     this.detector = options.detector;
     this.music = options.music;
-    this.statusBuilder = options.statusBuilder;
+    this.activityGenerator = options.activityGenerator;
     this.discord = options.discord;
     this.logger = options.logger || SILENT_LOGGER;
     this.spinner = options.spinner || SILENT_SPINNER;
@@ -77,7 +77,11 @@ class StatusFusionApp {
       }
 
       this.spinner.stop();
-      const activity = this.statusBuilder.buildActivity(apps, music, this.startTimestamp);
+      const activity = await this.activityGenerator.generateActivity(
+        apps,
+        music,
+        this.startTimestamp
+      );
       await this.discord.setActivity(activity);
       this.lastSnapshot = { apps: [...apps], music };
       this.lastUpdateAt = now;

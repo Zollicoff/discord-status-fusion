@@ -1,9 +1,12 @@
 const { StatusFusionApp } = require('./app');
 const { loadConfig, validateConfig } = require('./config');
+const { GeminiApiKeyProvider } = require('./core/api-key');
 const DiscordConnection = require('./core/discord');
 const ProcessDetector = require('./core/detector');
+const { GeminiClient } = require('./core/gemini');
 const MusicDetector = require('./core/music');
 const StatusBuilder = require('./core/status');
+const StatusGenerator = require('./core/status-generator');
 const { Logger } = require('./logger');
 const { Spinner } = require('./ui/spinner');
 
@@ -17,12 +20,32 @@ function createApplication(config, options = {}) {
   const detector = options.detector || new ProcessDetector({ logger });
   const music = options.music || new MusicDetector({ logger });
   const statusBuilder = options.statusBuilder || new StatusBuilder();
+  let activityGenerator = options.activityGenerator;
+  if (!activityGenerator) {
+    const apiKeyProvider = options.apiKeyProvider || new GeminiApiKeyProvider({
+      env: options.env,
+      logger
+    });
+    const gemini = options.gemini || new GeminiClient({
+      apiKeyProvider,
+      fetch: options.fetch,
+      logger,
+      model: config.geminiModel
+    });
+    activityGenerator = new StatusGenerator({
+      client: gemini,
+      enabled: config.llmEnabled,
+      fallbackBuilder: statusBuilder,
+      logger
+    });
+  }
   const discord = options.discord || new DiscordConnection({
     clientId: config.discordClientId,
     logger
   });
 
   return new StatusFusionApp({
+    activityGenerator,
     clearInterval: options.clearInterval,
     detector,
     discord,
@@ -32,7 +55,6 @@ function createApplication(config, options = {}) {
     now: options.now,
     setInterval: options.setInterval,
     spinner,
-    statusBuilder,
     updateInterval: config.updateInterval
   });
 }
@@ -100,6 +122,7 @@ async function run(options = {}) {
 
   const app = createApplication(config, {
     ...options.dependencies,
+    env,
     logger,
     stream: options.stream || processRef.stdout
   });

@@ -4,6 +4,7 @@ const assert = require('node:assert');
 const {
   DEFAULTS,
   loadConfig,
+  parseEnvBoolean,
   parseEnvInteger,
   validateConfig
 } = require('../src/config');
@@ -15,6 +16,8 @@ describe('configuration', () => {
     assert.deepStrictEqual(result.config, {
       discordClientId: '12345678901234567',
       forceUpdateInterval: DEFAULTS.forceUpdateInterval,
+      geminiModel: DEFAULTS.geminiModel,
+      llmEnabled: DEFAULTS.llmEnabled,
       logLevel: DEFAULTS.logLevel,
       updateInterval: DEFAULTS.updateInterval
     });
@@ -41,6 +44,30 @@ describe('configuration', () => {
       warning: null
     });
     assert.notStrictEqual(parseEnvInteger('VALUE', '2500ms', 10000, 1000).warning, null);
+  });
+
+  it('parses LLM switches and validates model names', () => {
+    assert.deepStrictEqual(parseEnvBoolean('LLM_ENABLED', 'no', true), {
+      value: false,
+      warning: null
+    });
+
+    const configured = loadConfig({
+      DISCORD_CLIENT_ID: '12345678901234567',
+      GEMINI_MODEL: 'gemini-2.5-flash',
+      LLM_ENABLED: 'false'
+    });
+    assert.strictEqual(configured.config.llmEnabled, false);
+    assert.strictEqual(configured.config.geminiModel, 'gemini-2.5-flash');
+
+    const invalid = loadConfig({
+      DISCORD_CLIENT_ID: '12345678901234567',
+      GEMINI_MODEL: '../other:model',
+      LLM_ENABLED: 'sometimes'
+    });
+    assert.strictEqual(invalid.config.llmEnabled, DEFAULTS.llmEnabled);
+    assert.strictEqual(invalid.config.geminiModel, DEFAULTS.geminiModel);
+    assert.strictEqual(invalid.warnings.length, 2);
   });
 
   it('returns actionable Discord ID validation errors', () => {

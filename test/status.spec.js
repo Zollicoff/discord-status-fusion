@@ -53,7 +53,7 @@ describe('StatusBuilder', () => {
   });
 
   describe('buildActivity', () => {
-    it('builds a deterministic Discord activity payload', () => {
+    it('builds a rule-based Discord activity payload', () => {
       const activity = builder.buildActivity(['ChatGPT', 'Ghostty'], null, 123);
 
       assert.strictEqual(activity.details, 'Using ChatGPT + Ghostty');

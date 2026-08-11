@@ -1,7 +1,7 @@
 {
   "name": "discord-status-fusion",
   "version": "1.0.0",
-  "description": "Reliable local Discord Rich Presence for active professional apps and music.",
+  "description": "AI-curated Discord Rich Presence for active professional apps and music.",
   "main": "main.js",
   "bin": {
     "dsf": "./bin/dsf"
@@ -35,6 +35,8 @@
     "developer-tools",
     "multi-app",
     "fusion",
+    "gemini",
+    "llm",
     "smart-status",
     "productivity",
     "automation"

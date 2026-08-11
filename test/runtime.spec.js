@@ -39,6 +39,12 @@ describe('runtime', () => {
     const processRef = new FakeProcess();
     const app = await run({
       dependencies: {
+        activityGenerator: {
+          generateActivity: async() => ({
+            details: 'Using ChatGPT',
+            state: 'Working on projects'
+          })
+        },
         clearInterval: timer => calls.push(`clear:${timer}`),
         detector: { getInterestingApps: async() => ['ChatGPT'] },
         discord: {
@@ -48,10 +54,7 @@ describe('runtime', () => {
         },
         music: { getCurrentMusic: async() => null },
         setInterval: () => 7,
-        spinner: { start() {}, stop() {} },
-        statusBuilder: {
-          buildActivity: () => ({ details: 'Using ChatGPT', state: 'Working on projects' })
-        }
+        spinner: { start() {}, stop() {} }
       },
       env: { DISCORD_CLIENT_ID: '12345678901234567' },
       logger: silentLogger,

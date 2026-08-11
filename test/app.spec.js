@@ -32,6 +32,13 @@ function createHarness(options = {}) {
     stop: () => calls.push('spinner:stop')
   };
   const app = new StatusFusionApp({
+    activityGenerator: {
+      generateActivity: async(detectedApps, detectedMusic, startTimestamp) => ({
+        details: `Using ${detectedApps.join(' + ')}`,
+        startTimestamp,
+        state: detectedMusic || 'Working on projects'
+      })
+    },
     clearInterval: timer => calls.push(`clear:${timer}`),
     detector: { getInterestingApps: async() => [...apps] },
     discord,
@@ -44,13 +51,6 @@ function createHarness(options = {}) {
       return 42;
     },
     spinner,
-    statusBuilder: {
-      buildActivity: (detectedApps, detectedMusic, startTimestamp) => ({
-        details: `Using ${detectedApps.join(' + ')}`,
-        startTimestamp,
-        state: detectedMusic || 'Working on projects'
-      })
-    },
     updateInterval: 10000
   });
 
