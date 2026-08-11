@@ -1,20 +1,29 @@
 {
   "name": "discord-status-fusion",
   "version": "1.0.0",
-  "description": "AI-powered Discord Rich Presence using Gemini 2.5 Flash-Lite Preview. Ultra-fast, intelligent status generation with smart change detection.",
+  "description": "Reliable local Discord Rich Presence for active professional apps and music.",
   "main": "main.js",
   "bin": {
     "dsf": "./bin/dsf"
   },
+  "files": [
+    ".env.example",
+    "bin/",
+    "docs/ARCHITECTURE.md",
+    "main.js",
+    "src/"
+  ],
   "scripts": {
     "start": "node main.js",
-    "start:daemon": "nohup node main.js > discord-status-fusion.log 2>&1 &",
-    "stop:daemon": "pkill -f 'node main.js'",
+    "start:daemon": "node bin/dsf start",
+    "stop:daemon": "node bin/dsf stop",
+    "restart:daemon": "node bin/dsf restart",
     "dev": "nodemon main.js",
-    "lint": "eslint . --ext .js",
-    "lint:fix": "eslint . --ext .js --fix",
-    "test": "node --test src/core/__tests__/*.spec.js",
-    "test:watch": "node --test --watch src/core/__tests__/*.spec.js"
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "node --test test/*.spec.js",
+    "test:watch": "node --test --watch test/*.spec.js",
+    "check": "npm run lint && npm test && npm audit --audit-level=high --omit=dev"
   },
   "repository": {
     "type": "git",
@@ -23,14 +32,9 @@
   "keywords": [
     "discord",
     "rich-presence",
-    "ai",
-    "llm",
-    "gemini",
     "developer-tools",
     "multi-app",
     "fusion",
-    "artificial-intelligence",
-    "contextual",
     "smart-status",
     "productivity",
     "automation"
@@ -43,14 +47,15 @@
   "homepage": "https://github.com/Zollicoff/discord-status-fusion#readme",
   "dependencies": {
     "discord-rpc": "^4.0.1",
-    "dotenv": "^16.6.1",
-    "node-fetch": "^3.3.2"
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
-    "eslint": "^8.0.0",
-    "nodemon": "^3.0.0"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0",
+    "globals": "^17.9.0",
+    "nodemon": "^3.1.14"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=22.13.0"
   }
 }

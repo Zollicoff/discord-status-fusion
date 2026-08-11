@@ -1,6 +1,6 @@
 # Discord Status Fusion - Complete Commit History
 
-This document preserves the complete commit history of the Discord Status Fusion project, including all detailed commit messages and changes made during development.
+This historical archive preserves detailed commit messages and development notes. It describes earlier implementations and should not be used as current architecture documentation; see [ARCHITECTURE.md](ARCHITECTURE.md) for the current design.
 
 ## Commit History (Chronological Order)
 

@@ -1,103 +1,96 @@
 const { execFile } = require('child_process');
-const { promisify } = require('util');
+const { SILENT_LOGGER } = require('../logger');
 
-const execFileAsync = promisify(execFile);
+const SCRIPT_TIMEOUT_MS = 3000;
 
 /**
- * Music Detection Service
- * Detects currently playing music from Apple Music and Spotify
+ * Detects currently playing music from Apple Music and Spotify on macOS.
  */
 class MusicDetector {
-  constructor() {
+  constructor(options = {}) {
+    this.platform = options.platform || process.platform;
+    this.execFile = options.execFile || execFile;
+    this.logger = options.logger || SILENT_LOGGER;
     this.platformWarningShown = false;
   }
 
   /**
-   * Get currently playing music from all sources
+   * Get currently playing music from supported sources.
    * @returns {Promise<string|null>} Music description or null
    */
   async getCurrentMusic() {
-    if (process.platform !== 'darwin') {
-      // Show warning once for unsupported platforms
+    if (this.platform !== 'darwin') {
       if (!this.platformWarningShown) {
-        console.log('[INFO] Music detection is only available on macOS');
-        console.log('[INFO] Windows and Linux music detection is not yet implemented');
+        this.logger.info('Music detection is only available on macOS');
         this.platformWarningShown = true;
       }
       return null;
     }
 
-    // Try Apple Music first, then Spotify - handle each independently
-    // so a failure in one doesn't prevent trying the other
-    const appleMusic = await this.getAppleMusic();
-    if (appleMusic) return appleMusic;
+    const [appleMusic, spotify] = await Promise.all([
+      this.getAppleMusic(),
+      this.getSpotify()
+    ]);
 
-    const spotify = await this.getSpotify();
-    if (spotify) return spotify;
-
-    return null;
+    return appleMusic || spotify || null;
   }
 
   /**
-   * Get Apple Music track info using AppleScript
+   * Get Apple Music track info without launching Music.
    * @returns {Promise<string|null>} Apple Music track or null
    */
-  async getAppleMusic() {
+  getAppleMusic() {
+    return this.getPlayerTrack('Music', 'Apple Music');
+  }
+
+  /**
+   * Get Spotify track info without launching Spotify.
+   * @returns {Promise<string|null>} Spotify track or null
+   */
+  getSpotify() {
+    return this.getPlayerTrack('Spotify', 'Spotify');
+  }
+
+  /**
+   * Query a supported player only when it is already running and playing.
+   * @param {'Music'|'Spotify'} appName - macOS application name
+   * @param {string} serviceName - Name shown in Discord
+   * @returns {Promise<string|null>} Current track or null
+   */
+  async getPlayerTrack(appName, serviceName) {
     const script = `
-      tell application "Music"
-        if player state is playing then
-          set trackName to name of current track
-          set artistName to artist of current track
-          return trackName & " by " & artistName & " on Apple Music"
-        end if
-      end tell
+      if application "${appName}" is running then
+        tell application "${appName}"
+          if player state is playing then
+            set trackName to name of current track
+            set artistName to artist of current track
+            return trackName & " by " & artistName & " on ${serviceName}"
+          end if
+        end tell
+      end if
+      return ""
     `;
 
     try {
-      // Use execFile with array arguments to prevent command injection
-      const { stdout } = await execFileAsync('osascript', ['-e', script]);
-      if (!stdout || !stdout.trim()) {
-        return null;
-      }
-
-      // Clean up the output and ensure consistent format
-      let result = stdout.trim();
-      if (result && !result.includes(' on Apple Music')) {
-        result += ' on Apple Music';
-      }
-      return result;
+      const stdout = await this.runAppleScript(script);
+      return stdout.trim() || null;
     } catch {
-      // AppleScript errors (app not running, not playing, etc.) are expected
+      // Players can close or change state while AppleScript is querying them.
       return null;
     }
   }
 
-  /**
-   * Get Spotify track info using AppleScript
-   * @returns {Promise<string|null>} Spotify track or null
-   */
-  async getSpotify() {
-    const script = `
-      tell application "Spotify"
-        if player state is playing then
-          set trackName to name of current track
-          set artistName to artist of current track
-          return trackName & " by " & artistName & " on Spotify"
-        end if
-      end tell
-    `;
+  runAppleScript(script) {
+    return new Promise((resolve, reject) => {
+      this.execFile('osascript', ['-e', script], { timeout: SCRIPT_TIMEOUT_MS }, (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
 
-    try {
-      // Use execFile with array arguments to prevent command injection
-      const { stdout } = await execFileAsync('osascript', ['-e', script]);
-      if (!stdout || !stdout.trim()) {
-        return null;
-      }
-      return stdout.trim();
-    } catch {
-      // AppleScript errors (app not running, not playing, etc.) are expected
-      return null;
-    }
+        resolve(stdout || '');
+      });
+    });
   }
 }
 

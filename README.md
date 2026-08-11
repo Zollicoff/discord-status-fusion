@@ -4,217 +4,142 @@
   <img src="src/images/status-fusion-icon.png" alt="Discord Status Fusion" width="128" height="128">
 </p>
 
-AI-powered Discord Rich Presence that intelligently displays your current professional applications and music.
-
-## Preview
-
-<p align="center">
-  <img src="src/images/status-fusion-preview.png" alt="Discord Status Fusion in action" width="400">
-</p>
+Discord Rich Presence that displays trusted local application and music activity. Status generation is deterministic: detected apps are normalized, deduplicated, and sent to Discord without an LLM or external API.
 
 ## Features
 
-- **AI-Powered Status Generation**: Uses Gemini 2.5 Flash-Lite for intelligent status formatting
-- **Professional App Detection**: Automatically detects and displays work-relevant applications
-- **Music Integration**: Shows currently playing music from Apple Music and Spotify (macOS only)
-- **Smart Change Detection**: Only updates when your apps or music actually change
-- **Gaming Friendly**: Does not override gaming status from Steam, Discord games, etc.
-- **Simple Setup**: Minimal configuration required
-- **Cross-Platform**: Supports macOS (full), Windows and Linux (partial)
-- **Configurable Intervals**: Customize update and refresh intervals via environment variables
-- **Exponential Backoff**: Automatic reconnection with intelligent retry logic
+- Detects a curated set of development, productivity, creative, and browser apps
+- Recognizes ChatGPT, legacy Codex, Ghostty, VS Code, Cursor, Notion, Safari, and many others
+- Shows Apple Music or Spotify tracks on macOS without launching inactive players
+- Updates only when local app/music state changes, with a configurable periodic refresh
+- Deduplicates app names and fits complete names within Discord's 128-character limit
+- Reconnects to Discord with bounded exponential backoff
+- Provides verified daemon start, stop, restart, and status commands
+- Makes no LLM or status-generation network calls
 
-## Quick Start
+## Requirements
 
-### Prerequisites
+- Node.js 22.13 or newer
+- Discord desktop app and account
+- A Discord application ID
 
-- Node.js 16 or higher
-- Discord account
-- Google AI API key
+## Installation
 
-### Installation
+1. Clone and install dependencies:
 
-1. **Clone the repository**
    ```bash
    git clone https://github.com/Zollicoff/discord-status-fusion.git
    cd discord-status-fusion
    npm install
    ```
 
-2. **Create Discord Application**
-   - Go to [Discord Developer Portal](https://discord.com/developers/applications)
-   - Create a new application
-   - Copy the Application ID
+2. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications) and copy its Application ID.
 
-   <p align="center">
-     <img src="src/images/status-fusion-setup.png" alt="Discord Application Setup" width="600">
-   </p>
+3. Configure the project:
 
-3. **Get Google AI API Key**
-   - Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
-   - Create a new API key
-
-4. **Configure API Key (Secure)**
-
-   **macOS:**
-   ```bash
-   security add-generic-password -s "GOOGLE_AI_API_KEY" -a "$(whoami)" -w "your-api-key-here"
-   ```
-
-   **Windows:**
-   ```cmd
-   cmdkey /add:GOOGLE_AI_API_KEY /user:discord-status-fusion /pass:your-api-key-here
-   ```
-
-   **Linux:**
-   ```bash
-   secret-tool store --label="Google AI API Key" service "GOOGLE_AI_API_KEY" username "discord-status-fusion"
-   # Enter your API key when prompted
-   ```
-
-5. **Configure Environment**
    ```bash
    cp .env.example .env
-   # Edit .env and add your Discord Application ID
    ```
 
-6. **Install CLI**
+   Set `DISCORD_CLIENT_ID` in `.env` to the application ID.
+
+4. Install the CLI and start the daemon:
+
    ```bash
    npm install -g .
-   ```
-
-7. **Run**
-   ```bash
    dsf start
    ```
 
+No Google or Gemini API key is required.
+
 ## How It Works
 
-1. **Process Detection**: Scans your running applications
-2. **Professional Filtering**: Identifies work-relevant software using a curated whitelist
-3. **AI Formatting**: Gemini AI intelligently selects and formats the best 4 apps
-4. **Music Detection**: Detects music from Apple Music and Spotify (macOS only)
-5. **Discord Update**: Updates your Rich Presence with the generated status
+1. `src/runtime.js` validates configuration and wires the runtime dependencies.
+2. `src/core/detector.js` enumerates apps, rejects helper processes, and maps approved names through `src/core/app-catalog.js`.
+3. `src/core/music.js` checks already-running Apple Music and Spotify instances on macOS.
+4. `src/app.js` compares source snapshots and asks `src/core/status.js` for a deterministic payload when state changes or a refresh is due.
+5. `src/core/discord.js` owns Discord IPC, retry, reconnect, activity updates, and clean shutdown.
 
-## Supported Applications
+Example:
 
-**Development Tools:** Cursor, VS Code, Xcode, Warp Terminal, IntelliJ, PyCharm, etc.
-
-**Creative Software:** Adobe Photoshop, Illustrator, After Effects, Figma, Sketch, etc.
-
-**Office & Productivity:** Microsoft Office, Notion, Obsidian, Keynote, etc.
-
-**Professional Tools:** Docker, Postman, TablePlus, Wireshark, etc.
-
-**Browsers:** Chrome, Safari, Firefox, Arc, etc.
-
-## Example Status
-
-```
-Using Cursor + Photoshop + Safari + Excel
-   -> # Song Name by Artist on Apple Music
+```text
+Using ChatGPT + Ghostty + Notion + Safari
+   -> Working on projects
 ```
 
-## CLI Commands
-
-After installing globally with `npm install -g .`, you can use:
+## CLI
 
 ```bash
-dsf start   # Start the daemon in background
-dsf stop    # Stop the daemon
-dsf status  # Check if running
-dsf help    # Show help
+dsf start    # Start the background daemon
+dsf stop     # Stop the verified daemon process
+dsf restart  # Restart the daemon
+dsf status   # Check daemon state
+dsf help     # Show CLI help
 ```
 
-The daemon runs in the background and survives terminal closures. Logs are written to `discord-status-fusion.log`.
+The PID record is stored in `dsf.pid`. Logs are appended to `discord-status-fusion.log`; both are ignored by Git. The CLI verifies that a recorded PID is running this project's resolved `main.js` before signaling it.
 
 ## Configuration
 
-### Environment Variables
-
-Create a `.env` file:
-
-```bash
-# Required
+```dotenv
 DISCORD_CLIENT_ID=your_discord_application_id_here
 
-# Optional - Update intervals (in milliseconds)
-UPDATE_INTERVAL=10000        # How often to check for changes (default: 10s)
-FORCE_UPDATE_INTERVAL=300000 # Force refresh interval (default: 5min)
+# Optional, in milliseconds
+UPDATE_INTERVAL=10000
+FORCE_UPDATE_INTERVAL=300000
 
-# Optional - Logging
-LOG_LEVEL=info  # Available: error, warn, info, debug, verbose
+# error, warn, info, debug, or verbose
+LOG_LEVEL=info
 ```
 
-### Adding New Applications
+`UPDATE_INTERVAL` has a one-second minimum. `FORCE_UPDATE_INTERVAL` has a ten-second minimum.
 
-To add support for a new professional application, edit the whitelist in `src/core/detector.js` and add the appropriate regex pattern.
+## Supported Apps
+
+The curated whitelist includes:
+
+- Development and AI: ChatGPT, Codex, Cursor, VS Code, Zed, Xcode, JetBrains IDEs
+- Terminals: Ghostty, Warp, iTerm, Terminal, Hyper
+- Productivity: Notion, Notion Calendar, Obsidian, Microsoft Office, Pages, Numbers, Keynote
+- Creative: Adobe apps, Figma, Sketch, Blender, Final Cut Pro, Logic Pro
+- Browsers: Safari, Chrome, Firefox, Edge, Brave, Arc, Opera
+- Engineering tools: Docker Desktop, Postman, TablePlus, Wireshark, GitHub Desktop
+
+To add an app, add an exact or intentionally scoped pattern and canonical `displayName` to `src/core/app-catalog.js`, then add a detector test. Earlier entries have higher display priority.
 
 ## Platform Support
 
 | Feature | macOS | Windows | Linux |
-|---------|-------|---------|-------|
-| Process Detection | Yes | Yes | Yes |
-| Music Detection | Yes | No | No |
-| Keychain Storage | Yes | Yes | Yes |
+|---|---:|---:|---:|
+| Application detection | Yes | Yes | Yes |
+| Apple Music and Spotify detection | Yes | No | No |
+| Background daemon CLI | Yes | Yes | Yes |
 
-Note: Music detection requires AppleScript and is only available on macOS. Windows and Linux users will see a one-time informational message about this limitation.
+macOS is the primary tested platform. Windows and Linux app detection use process-list fallbacks and do not currently expose music state.
 
 ## Troubleshooting
 
-### Common Issues
+**ChatGPT is missing:** Run `dsf restart` after updating. The current ChatGPT desktop process maps directly to `ChatGPT`; legacy `Codex` remains supported separately.
 
-**"DISCORD_CLIENT_ID not found"**: Ensure you've created a `.env` file with your Discord Application ID. The ID should be a 17-19 digit number.
+**The daemon exits during startup:** Confirm `DISCORD_CLIENT_ID` is a 17-19 digit application ID, then inspect `discord-status-fusion.log`.
 
-**"No API key found"**: Ensure you've stored your Google AI API key in the system keychain using the commands above. Check the console output for specific instructions for your platform.
+**Discord does not connect:** Ensure the Discord desktop app is running. The daemon retries connection with exponential backoff.
 
-**"Discord connection failed"**: Make sure Discord is running and your Application ID is correct. The application will automatically retry with exponential backoff.
-
-**"App not detected"**: Check if your application is in the professional apps whitelist in `src/core/detector.js`.
+**An app is missing:** Check its exact process/display name and add a narrowly matched whitelist entry plus a regression test.
 
 ## Development
 
-### Running Tests
-
 ```bash
-npm test           # Run all tests
-npm run test:watch # Run tests in watch mode
-npm run lint       # Check code style
-npm run lint:fix   # Fix code style issues
+npm start               # Run in the foreground
+npm start -- --verbose  # Include verbose state logs
+npm run dev             # Restart on source changes
+npm run lint            # Lint source and tests
+npm test                # Run the node:test suite
+npm run check           # Lint, test, and production dependency audit
 ```
 
-### Development Mode
-
-```bash
-npm run dev        # Run with auto-restart on file changes
-npm start -- --verbose  # Run with detailed debug output
-```
-
-## Contributing
-
-Contributions are welcome! Please focus on:
-
-- Adding new professional applications to the whitelist
-- Improving cross-platform compatibility (especially Windows/Linux music detection)
-- Bug fixes and optimizations
-- Documentation improvements
-- Adding more test coverage
-
-Before submitting a PR:
-1. Run `npm run lint` to check code style
-2. Run `npm test` to ensure all tests pass
-3. Test the application manually with `dsf start`
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for module ownership, runtime and CLI flows, test boundaries, and extension rules.
 
 ## License
 
-MIT License - see LICENSE file for details.
-
-## Links
-
-- [GitHub Repository](https://github.com/Zollicoff/discord-status-fusion)
-- [Discord Developer Portal](https://discord.com/developers/applications)
-- [Google AI Studio](https://aistudio.google.com/app/apikey)
-
----
-
-*Intelligent Discord status generation powered by AI.*
+MIT License. See [LICENSE](LICENSE).
