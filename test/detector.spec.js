@@ -58,6 +58,14 @@ describe('ProcessDetector', () => {
       assert.strictEqual(detector.getDisplayAppName('ghostty'), 'Ghostty');
     });
 
+    it('should identify T3 Code release channels under one canonical name', () => {
+      assert.strictEqual(detector.getDisplayAppName('T3 Code'), 'T3 Code');
+      assert.strictEqual(detector.getDisplayAppName('T3 Code (Nightly)'), 'T3 Code');
+      assert.strictEqual(detector.getDisplayAppName('/Applications/T3 Code (Nightly).app/Contents/MacOS/T3 Code (Nightly)'), 'T3 Code');
+      assert.strictEqual(detector.getDisplayAppName('/Applications/T3 Code (Nightly).app/Contents/Frameworks/T3 Code (Nightly) Helper.app/Contents/MacOS/T3 Code (Nightly) Helper'), null);
+      assert.strictEqual(detector.getDisplayAppName('T3'), null);
+    });
+
     it('should identify canonical productivity and cross-platform aliases', () => {
       assert.strictEqual(detector.getDisplayAppName('Notion Calendar'), 'Notion Calendar');
       assert.strictEqual(detector.getDisplayAppName('WINWORD'), 'Microsoft Word');

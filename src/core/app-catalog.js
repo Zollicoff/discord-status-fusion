@@ -2,6 +2,7 @@ const APP_CATALOG = Object.freeze([
   // AI and development tools
   { pattern: /^chatgpt$/i, displayName: 'ChatGPT' },
   { pattern: /^codex$/i, displayName: 'Codex' },
+  { pattern: /^t3 code(?: \((?:nightly|beta|alpha|dev)\))?$/i, displayName: 'T3 Code' },
   { pattern: /^cursor$/i, displayName: 'Cursor' },
   { pattern: /^(?:code|code-insiders)$/i, displayName: 'VS Code' },
   { pattern: /^visual studio code(?: - insiders)?$/i, displayName: 'VS Code' },
