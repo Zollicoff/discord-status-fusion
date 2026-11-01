@@ -41,3 +41,6 @@ build/
 
 # Runtime artifacts
 dsf.pid
+
+# Local agent tooling
+.codex/

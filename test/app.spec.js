@@ -1,125 +1,161 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 
-const { StatusFusionApp, appListsEqual } = require('../src/app');
-
-const silentLogger = {
-  error() {},
-  info() {},
-  verbose() {},
-  warn() {}
-};
+const { StatusFusionApp } = require('../src/app');
+const { FocusTracker } = require('../src/core/focus-tracker');
+const { PresenceBuilder } = require('../src/core/presence');
 
 function createHarness(options = {}) {
-  let apps = options.apps || ['ChatGPT', 'Ghostty'];
-  let music = options.music ?? null;
-  let now = options.now || 1000;
-  let timerCallback;
-  const activities = [];
-  const calls = [];
+  const clock = { now: 1000 };
+  const state = {
+    sample: options.sample || { running: ['cursor', 'chatgpt'], focused: 'cursor', focusSupported: true, idleSeconds: 0 },
+    music: options.music || null
+  };
+  const sent = [];
+  const messages = [];
   const discord = {
-    close: async() => calls.push('close'),
-    connect: async() => calls.push('connect'),
-    setActivity: async activity => {
-      if (options.setActivityError) {
-        throw options.setActivityError;
+    started: false,
+    stopped: false,
+    start() {
+      this.started = true;
+    },
+    async setActivity(activity) {
+      if (options.discordError) {
+        throw new Error(options.discordError);
       }
-      activities.push(activity);
+      sent.push(activity);
+      return true;
+    },
+    async stop() {
+      this.stopped = true;
     }
   };
-  const spinner = {
-    start: () => calls.push('spinner:start'),
-    stop: () => calls.push('spinner:stop')
-  };
+  const intervals = [];
   const app = new StatusFusionApp({
-    activityGenerator: {
-      generateActivity: async(detectedApps, detectedMusic, startTimestamp) => ({
-        details: `Using ${detectedApps.join(' + ')}`,
-        startTimestamp,
-        state: detectedMusic || 'Working on projects'
-      })
+    detector: {
+      sample: async() => {
+        if (options.detectorError) {
+          throw new Error(options.detectorError);
+        }
+        return state.sample;
+      }
     },
-    clearInterval: timer => calls.push(`clear:${timer}`),
-    detector: { getInterestingApps: async() => [...apps] },
     discord,
-    forceUpdateInterval: 5000,
-    logger: silentLogger,
-    music: { getCurrentMusic: async() => music },
-    now: () => now,
-    setInterval: callback => {
-      timerCallback = callback;
-      return 42;
+    idleTimeoutMs: options.idleTimeoutMs ?? 600000,
+    logger: {
+      error: message => messages.push(`error: ${message}`),
+      info: message => messages.push(`info: ${message}`),
+      verbose() {},
+      warn: message => messages.push(`warn: ${message}`)
     },
-    spinner,
+    maxApps: 3,
+    music: { getCurrentMusic: async() => state.music },
+    now: () => clock.now,
+    presenceBuilder: new PresenceBuilder({ statusDisplay: 'name' }),
+    setInterval: (callback, ms) => {
+      intervals.push({ callback, ms });
+      return intervals.length;
+    },
+    clearInterval: id => {
+      intervals[id - 1].cleared = true;
+    },
+    showMusic: options.showMusic,
+    tracker: new FocusTracker(),
     updateInterval: 10000
   });
-
-  return {
-    activities,
-    app,
-    calls,
-    getTimerCallback: () => timerCallback,
-    setApps: value => {
-      apps = value;
-    },
-    setMusic: value => {
-      music = value;
-    },
-    setNow: value => {
-      now = value;
-    }
-  };
+  return { app, clock, discord, intervals, messages, sent, state };
 }
 
 describe('StatusFusionApp', () => {
-  it('compares app snapshots without mutating their order', () => {
-    const apps = ['ChatGPT', 'Ghostty'];
-    assert.strictEqual(appListsEqual(apps, ['ChatGPT', 'Ghostty']), true);
-    assert.strictEqual(appListsEqual(apps, ['Ghostty', 'ChatGPT']), false);
-    assert.deepStrictEqual(apps, ['ChatGPT', 'Ghostty']);
+  it('starts Discord in the background, publishes immediately, and schedules polling', async() => {
+    const { app, discord, intervals, sent } = createHarness();
+
+    await app.start();
+
+    assert.strictEqual(discord.started, true);
+    assert.strictEqual(intervals[0].ms, 10000);
+    assert.strictEqual(sent.length, 1);
+    assert.strictEqual(sent[0].state, 'Cursor');
+    assert.strictEqual(sent[0].timestamps.start, 1000);
   });
 
-  it('connects, publishes an initial status, schedules updates, and closes', async() => {
-    const harness = createHarness();
+  it('keeps the elapsed timer while the leading app stays the same', async() => {
+    const { app, clock, sent, state } = createHarness();
+    for (let tick = 0; tick < 6; tick += 1) {
+      await app.tick();
+      clock.now += 10000;
+    }
 
-    await harness.app.start();
+    state.sample = { ...state.sample, focused: 'chatgpt' };
+    await app.tick();
 
-    assert.strictEqual(harness.activities.length, 1);
-    assert.strictEqual(typeof harness.getTimerCallback(), 'function');
-    assert.strictEqual(harness.activities[0].details, 'Using ChatGPT + Ghostty');
-    assert.ok(harness.calls.includes('connect'));
-
-    await harness.app.stop();
-    assert.ok(harness.calls.includes('clear:42'));
-    assert.ok(harness.calls.includes('close'));
+    const latest = sent.at(-1);
+    assert.strictEqual(latest.timestamps.start, 1000);
+    assert.strictEqual(latest.state, 'Cursor + ChatGPT');
   });
 
-  it('skips unchanged snapshots until the refresh interval elapses', async() => {
-    const harness = createHarness();
+  it('restarts the elapsed timer when a different app takes the lead', async() => {
+    const { app, clock, sent, state } = createHarness();
+    await app.tick();
 
-    assert.strictEqual(await harness.app.updateStatus({ force: true }), true);
-    assert.strictEqual(await harness.app.updateStatus(), false);
-    harness.setNow(6000);
-    assert.strictEqual(await harness.app.updateStatus(), true);
-    assert.strictEqual(harness.activities.length, 2);
+    clock.now += 10000;
+    state.sample = { running: ['chatgpt'], focused: 'chatgpt', focusSupported: true, idleSeconds: 0 };
+    await app.tick();
+
+    assert.strictEqual(sent[1].state, 'ChatGPT');
+    assert.strictEqual(sent[1].timestamps.start, 11000);
   });
 
-  it('publishes immediately when apps or music change', async() => {
-    const harness = createHarness();
+  it('hides apps after the idle timeout but keeps showing music', async() => {
+    const music = { title: 'Song', artist: 'Band', service: 'Spotify' };
+    const { app, messages, sent, state } = createHarness({ idleTimeoutMs: 60000, music });
+    state.sample = { ...state.sample, idleSeconds: 120 };
 
-    await harness.app.updateStatus({ force: true });
-    harness.setApps(['ChatGPT', 'Notion']);
-    harness.setMusic('Song by Artist on Apple Music');
+    await app.tick();
 
-    assert.strictEqual(await harness.app.updateStatus(), true);
-    assert.strictEqual(harness.activities[1].state, 'Song by Artist on Apple Music');
+    assert.strictEqual(sent[0].type, 2);
+    assert.strictEqual(sent[0].details, 'Song');
+    assert.ok(messages.some(message => /Idle for 2 min/.test(message)));
+
+    state.music = null;
+    await app.tick();
+    assert.strictEqual(sent[1], null);
   });
 
-  it('does not cache a snapshot when Discord rejects the update', async() => {
-    const harness = createHarness({ setActivityError: new Error('offline') });
+  it('can ignore music entirely', async() => {
+    const { app, sent } = createHarness({
+      music: { title: 'Song', artist: 'Band', service: 'Spotify' },
+      showMusic: false
+    });
+    await app.tick();
+    assert.strictEqual(sent[0].state, 'Cursor');
+  });
 
-    assert.strictEqual(await harness.app.updateStatus({ force: true }), false);
-    assert.strictEqual(harness.app.lastSnapshot, null);
-    assert.strictEqual(harness.app.lastUpdateAt, 0);
+  it('logs status changes once', async() => {
+    const { app, messages } = createHarness();
+    await app.tick();
+    await app.tick();
+    assert.strictEqual(messages.filter(message => message.startsWith('info: Status:')).length, 1);
+  });
+
+  it('survives detector failures and skips overlapping ticks', async() => {
+    const failing = createHarness({ detectorError: 'ps exploded' });
+    assert.strictEqual(await failing.app.tick(), false);
+    assert.ok(failing.messages.some(message => /Status update failed: ps exploded/.test(message)));
+
+    const { app } = createHarness();
+    app.busy = true;
+    assert.strictEqual(await app.tick(), false);
+  });
+
+  it('stops polling and Discord on stop', async() => {
+    const { app, discord, intervals } = createHarness();
+    await app.start();
+    await app.stop();
+    await app.stop();
+
+    assert.strictEqual(intervals[0].cleared, true);
+    assert.strictEqual(discord.stopped, true);
+    assert.strictEqual(await app.tick(), false);
   });
 });

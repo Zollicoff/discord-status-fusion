@@ -21,6 +21,9 @@ describe('PidStore', () => {
         mode = value;
       },
       existsSync: () => content !== null,
+      mkdirSync: (_path, options) => {
+        assert.strictEqual(options.recursive, true);
+      },
       readFileSync: () => content,
       unlinkSync: () => {
         content = null;
@@ -30,12 +33,26 @@ describe('PidStore', () => {
         mode = options.mode;
       }
     };
-    const store = new PidStore('/tmp/dsf-test.pid', fs);
+    const store = new PidStore('/tmp/dsf-test.pid', { fs });
 
     store.write(1234, '/project/main.js');
 
     assert.strictEqual(mode, 0o600);
     assert.strictEqual(store.read().pid, 1234);
+    store.remove();
+    assert.strictEqual(store.exists(), false);
+  });
+
+  it('falls back to the legacy in-repo PID file and removes both', () => {
+    const files = new Map([['/repo/dsf.pid', '777']]);
+    const fs = {
+      existsSync: file => files.has(file),
+      readFileSync: file => files.get(file),
+      unlinkSync: file => files.delete(file)
+    };
+    const store = new PidStore('/state/dsf.pid', { fs, legacyPath: '/repo/dsf.pid' });
+
+    assert.deepStrictEqual(store.read(), { pid: 777 });
     store.remove();
     assert.strictEqual(store.exists(), false);
   });

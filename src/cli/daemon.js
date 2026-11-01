@@ -1,5 +1,8 @@
 const fs = require('fs');
+const path = require('path');
 const { spawn } = require('child_process');
+
+const { rotateLog } = require('../logger');
 
 const STARTUP_CHECK_MS = 400;
 const STOP_TIMEOUT_MS = 5000;
@@ -40,6 +43,8 @@ class DaemonController {
     }
 
     this.logger.log('Starting Discord Status Fusion...');
+    this.fs.mkdirSync(path.dirname(this.logFile), { recursive: true });
+    rotateLog(this.logFile, this.fs);
     this.fs.appendFileSync(this.logFile, `\n--- Start ${new Date().toISOString()} ---\n`);
     const logFd = this.fs.openSync(this.logFile, 'a');
     let child;
@@ -49,7 +54,8 @@ class DaemonController {
       child = this.spawn(this.nodePath, [this.mainFile], {
         cwd: this.projectRoot,
         detached: true,
-        stdio: ['ignore', logFd, logFd]
+        stdio: ['ignore', logFd, logFd],
+        windowsHide: true
       });
       child.once?.('error', error => {
         spawnError = error;
@@ -129,18 +135,19 @@ class DaemonController {
     return false;
   }
 
-  status() {
+  status(options = {}) {
+    const log = options.quiet ? () => {} : message => this.logger.log(message);
     const record = this.pidStore.read();
     if (this.inspector.isManagedProcess(record)) {
-      this.logger.log(`Discord Status Fusion is running (PID: ${record.pid})`);
+      log(`Discord Status Fusion is running (PID: ${record.pid})`);
       return true;
     }
 
     if (this.pidStore.exists()) {
       this.pidStore.remove();
-      this.logger.log('Discord Status Fusion is not running (removed stale PID file)');
+      log('Discord Status Fusion is not running (removed stale PID file)');
     } else {
-      this.logger.log('Discord Status Fusion is not running');
+      log('Discord Status Fusion is not running');
     }
     return false;
   }

@@ -1,11 +1,16 @@
+/**
+ * Single-line TTY indicator showing the current status. Disabled automatically
+ * when output is not a terminal (daemon logs, pipes).
+ */
 class Spinner {
   constructor(options = {}) {
     this.stream = options.stream || process.stdout;
     this.enabled = options.enabled ?? Boolean(this.stream.isTTY);
-    this.frames = options.frames || ['|', '/', '-', '\\'];
-    this.intervalMs = options.intervalMs || 120;
+    this.frames = options.frames || ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    this.intervalMs = options.intervalMs || 100;
     this.frameIndex = 0;
     this.timer = null;
+    this.message = '';
   }
 
   get isSpinning() {
@@ -13,22 +18,31 @@ class Spinner {
   }
 
   start(message = 'Running') {
-    if (!this.enabled || this.isSpinning) {
+    if (!this.enabled) {
       return;
     }
-
-    this.stream.write(`${this.frames[0]} ${message}...`);
+    this.message = message;
+    if (this.isSpinning) {
+      return;
+    }
+    this.render();
     this.timer = setInterval(() => {
       this.frameIndex = (this.frameIndex + 1) % this.frames.length;
-      this.stream.write(`\r${this.frames[this.frameIndex]} ${message}...`);
+      this.render();
     }, this.intervalMs);
+    this.timer.unref?.();
+  }
+
+  render() {
+    const columns = this.stream.columns || 80;
+    const line = `${this.frames[this.frameIndex]} ${this.message}`;
+    this.stream.write(`\r\x1b[K${Array.from(line).slice(0, Math.max(1, columns - 1)).join('')}`);
   }
 
   stop() {
     if (!this.isSpinning) {
       return;
     }
-
     clearInterval(this.timer);
     this.timer = null;
     this.stream.write('\r\x1b[K');

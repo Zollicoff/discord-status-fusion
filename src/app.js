@@ -1,101 +1,118 @@
+const { getApp } = require('./core/app-catalog');
+const { describePresence } = require('./core/presence');
 const { SILENT_LOGGER } = require('./logger');
 const { SILENT_SPINNER } = require('./ui/spinner');
 
-function appListsEqual(left, right) {
-  return left.length === right.length && left.every((app, index) => app === right[index]);
-}
-
+/**
+ * Samples local activity on an interval and keeps Discord in sync.
+ *
+ * Each tick: detect apps/focus/idle and music -> update focus scores -> rank
+ * apps -> build the presence -> hand it to Discord (which skips duplicates).
+ */
 class StatusFusionApp {
   constructor(options) {
     this.detector = options.detector;
     this.music = options.music;
-    this.activityGenerator = options.activityGenerator;
+    this.tracker = options.tracker;
+    this.presenceBuilder = options.presenceBuilder;
     this.discord = options.discord;
     this.logger = options.logger || SILENT_LOGGER;
     this.spinner = options.spinner || SILENT_SPINNER;
     this.updateInterval = options.updateInterval;
-    this.forceUpdateInterval = options.forceUpdateInterval;
+    this.idleTimeoutMs = options.idleTimeoutMs ?? 0;
+    this.maxApps = options.maxApps ?? 3;
+    this.showMusic = options.showMusic !== false;
     this.now = options.now || Date.now;
     this.setInterval = options.setInterval || setInterval;
     this.clearInterval = options.clearInterval || clearInterval;
-    this.startTimestamp = this.now();
-    this.lastSnapshot = null;
-    this.lastUpdateAt = 0;
     this.timer = null;
     this.running = false;
     this.stopping = false;
-    this.isUpdating = false;
+    this.busy = false;
+    this.sessionKey = undefined;
+    this.sessionStart = null;
+    this.lastSummary = null;
+    this.wasIdle = false;
   }
 
   async start() {
     if (this.running) {
       return;
     }
-
-    this.logger.info('Starting Discord Status Fusion');
-    await this.discord.connect();
     this.running = true;
     this.stopping = false;
-    await this.updateStatus({ force: true });
+    this.logger.info('Starting Discord Status Fusion');
+    this.discord.start();
+    await this.tick();
     this.timer = this.setInterval(() => {
-      void this.updateStatus();
+      void this.tick();
     }, this.updateInterval);
-    this.logger.info(
-      `Monitoring apps every ${this.updateInterval / 1000}s; ` +
-      `refreshing every ${this.forceUpdateInterval / 60000}min`
-    );
+    this.logger.info(`Sampling activity every ${this.updateInterval / 1000}s`);
   }
 
-  snapshotChanged(apps, music) {
-    return this.lastSnapshot === null ||
-      !appListsEqual(apps, this.lastSnapshot.apps) ||
-      music !== this.lastSnapshot.music;
-  }
+  /**
+   * Compute the presence for the current moment without touching Discord.
+   * @returns {Promise<{activity: object|null, apps: object[], music: object|null, idle: boolean, sample: object}>}
+   */
+  async compute() {
+    const [sample, music] = await Promise.all([
+      this.detector.sample(),
+      this.showMusic ? this.music.getCurrentMusic() : Promise.resolve(null)
+    ]);
+    const now = this.now();
+    this.tracker.record(sample, now);
 
-  async updateStatus(options = {}) {
-    if (this.isUpdating || this.stopping) {
-      this.logger.verbose('Skipping overlapping status update');
-      return false;
+    const idle = this.idleTimeoutMs > 0 &&
+      Number.isFinite(sample.idleSeconds) &&
+      sample.idleSeconds * 1000 >= this.idleTimeoutMs;
+    const apps = idle ? [] : this.tracker.rank(this.maxApps).map(getApp).filter(Boolean);
+
+    const sessionKey = apps[0]?.id ?? (music ? `music:${music.title}:${music.artist}` : null);
+    if (sessionKey !== this.sessionKey) {
+      this.sessionKey = sessionKey;
+      this.sessionStart = now;
     }
 
-    this.isUpdating = true;
+    const activity = this.presenceBuilder.build({ apps, music, startTimestamp: this.sessionStart });
+    return { activity, apps, music, idle, sample };
+  }
+
+  async tick() {
+    if (this.busy || this.stopping) {
+      return false;
+    }
+    this.busy = true;
     try {
-      const [apps, music] = await Promise.all([
-        this.detector.getInterestingApps(),
-        this.music.getCurrentMusic()
-      ]);
+      const { activity, idle, sample } = await this.compute();
       if (this.stopping) {
         return false;
       }
 
-      const now = this.now();
-      const changed = this.snapshotChanged(apps, music);
-      const refreshDue = options.force || now - this.lastUpdateAt >= this.forceUpdateInterval;
-      if (!changed && !refreshDue) {
-        this.logger.verbose('App and music snapshot is unchanged');
-        return false;
+      if (idle !== this.wasIdle) {
+        this.wasIdle = idle;
+        this.logger.info(idle ?
+          `Idle for ${Math.floor(sample.idleSeconds / 60)} min; hiding app activity` :
+          'Activity resumed');
       }
 
-      this.spinner.stop();
-      const activity = await this.activityGenerator.generateActivity(
-        apps,
-        music,
-        this.startTimestamp
-      );
-      await this.discord.setActivity(activity);
-      this.lastSnapshot = { apps: [...apps], music };
-      this.lastUpdateAt = now;
-      this.logger.info(`Discord status: ${activity.details}`);
-      this.logger.info(`Status context: ${activity.state}`);
-      return true;
+      const summary = describePresence(activity);
+      if (summary !== this.lastSummary) {
+        this.lastSummary = summary;
+        this.spinner.stop();
+        this.logger.info(`Status: ${summary}`);
+      }
+      this.logger.verbose(`Sample: ${JSON.stringify(sample)}`);
+      if (this.running && !this.stopping) {
+        this.spinner.start(summary);
+      }
+
+      return await this.discord.setActivity(activity);
     } catch (error) {
+      this.spinner.stop();
       this.logger.error(`Status update failed: ${error.message}`);
       return false;
     } finally {
-      this.isUpdating = false;
-      if (this.running && !this.stopping) {
-        this.spinner.start();
-      }
+      this.busy = false;
     }
   }
 
@@ -103,7 +120,6 @@ class StatusFusionApp {
     if (this.stopping) {
       return;
     }
-
     this.stopping = true;
     this.running = false;
     if (this.timer) {
@@ -111,12 +127,11 @@ class StatusFusionApp {
       this.timer = null;
     }
     this.spinner.stop();
-    await this.discord.close();
+    await this.discord.stop();
     this.logger.info('Discord Status Fusion stopped');
   }
 }
 
 module.exports = {
-  StatusFusionApp,
-  appListsEqual
+  StatusFusionApp
 };

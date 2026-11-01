@@ -1,70 +1,101 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
 
-const MusicDetector = require('../src/core/music');
+const { MusicDetector, formatTrack, parseTrack } = require('../src/core/music');
 
-function createExecFile(handler) {
-  return (command, args, options, callback) => {
-    handler({ command, args, options, callback });
+const SEP = '\x1f';
+
+function fakeExec(handler, calls = []) {
+  return (command, args, _options, callback) => {
+    calls.push({ command, args });
+    const result = handler(command, args);
+    if (result instanceof Error) {
+      callback(result);
+    } else {
+      callback(null, result);
+    }
   };
 }
 
 describe('MusicDetector', () => {
-  it('returns null and records its warning on unsupported platforms', async() => {
-    const detector = new MusicDetector({ platform: 'linux' });
+  it('returns structured Apple Music tracks without launching players', async() => {
+    const calls = [];
+    const detector = new MusicDetector({
+      platform: 'darwin',
+      execFile: fakeExec((_command, args) => args[1].includes('"Music"') ? `Midnight City${SEP}M83\n` : '', calls)
+    });
+
+    assert.deepStrictEqual(await detector.getCurrentMusic(), {
+      artist: 'M83',
+      service: 'Apple Music',
+      title: 'Midnight City'
+    });
+    for (const call of calls) {
+      assert.match(call.args[1], /if application "(?:Music|Spotify)" is running then/);
+    }
+  });
+
+  it('falls back to Spotify and tolerates player errors', async() => {
+    const detector = new MusicDetector({
+      platform: 'darwin',
+      execFile: fakeExec((_command, args) => args[1].includes('"Music"') ?
+        new Error('Music quit') :
+        `Intro${SEP}The xx`)
+    });
+
+    assert.deepStrictEqual(await detector.getCurrentMusic(), {
+      artist: 'The xx',
+      service: 'Spotify',
+      title: 'Intro'
+    });
+  });
+
+  it('returns null when nothing is playing', async() => {
+    const detector = new MusicDetector({ platform: 'darwin', execFile: fakeExec(() => '\n') });
+    assert.strictEqual(await detector.getCurrentMusic(), null);
+  });
+
+  it('reads known MPRIS players through playerctl on Linux', async() => {
+    const detector = new MusicDetector({
+      platform: 'linux',
+      execFile: fakeExec(() => [
+        `firefox${SEP}Playing${SEP}Some Video${SEP}Channel`,
+        `spotify${SEP}Paused${SEP}Old Song${SEP}Band`,
+        `rhythmbox.instance123${SEP}Playing${SEP}Teardrop${SEP}Massive Attack`
+      ].join('\n'))
+    });
+
+    assert.deepStrictEqual(await detector.getCurrentMusic(), {
+      artist: 'Massive Attack',
+      service: 'Rhythmbox',
+      title: 'Teardrop'
+    });
+  });
+
+  it('stops calling playerctl when it is not installed', async() => {
+    const calls = [];
+    const detector = new MusicDetector({
+      platform: 'linux',
+      execFile: fakeExec(() => Object.assign(new Error('spawn playerctl ENOENT'), { code: 'ENOENT' }), calls)
+    });
 
     assert.strictEqual(await detector.getCurrentMusic(), null);
-    assert.strictEqual(detector.platformWarningShown, true);
+    assert.strictEqual(await detector.getCurrentMusic(), null);
+    assert.strictEqual(calls.length, 1);
+  });
+
+  it('reports no music on unsupported platforms', async() => {
+    const detector = new MusicDetector({
+      platform: 'win32',
+      execFile: () => assert.fail('should not run commands')
+    });
     assert.strictEqual(await detector.getCurrentMusic(), null);
   });
 
-  it('prefers Apple Music when both supported players report tracks', async() => {
-    const execFile = createExecFile(({ args, callback }) => {
-      const script = args[1];
-      const output = script.includes('application "Music"') ?
-        'Apple Song by Artist on Apple Music\n' :
-        'Spotify Song by Artist on Spotify\n';
-      callback(null, output);
-    });
-    const detector = new MusicDetector({ platform: 'darwin', execFile });
-
-    assert.strictEqual(
-      await detector.getCurrentMusic(),
-      'Apple Song by Artist on Apple Music'
-    );
-  });
-
-  it('falls through to Spotify when Apple Music is not playing', async() => {
-    const execFile = createExecFile(({ args, callback }) => {
-      const script = args[1];
-      callback(null, script.includes('application "Music"') ? '' : 'Song by Artist on Spotify\n');
-    });
-    const detector = new MusicDetector({ platform: 'darwin', execFile });
-
-    assert.strictEqual(await detector.getCurrentMusic(), 'Song by Artist on Spotify');
-  });
-
-  it('guards each query so inactive players are not launched', async() => {
-    const scripts = [];
-    const execFile = createExecFile(({ args, options, callback }) => {
-      scripts.push(args[1]);
-      assert.ok(options.timeout > 0);
-      callback(null, '');
-    });
-    const detector = new MusicDetector({ platform: 'darwin', execFile });
-
-    await detector.getCurrentMusic();
-
-    assert.ok(scripts.some(script => script.includes('if application "Music" is running then')));
-    assert.ok(scripts.some(script => script.includes('if application "Spotify" is running then')));
-  });
-
-  it('returns null when AppleScript fails or times out', async() => {
-    const execFile = createExecFile(({ callback }) => {
-      callback(new Error('timed out'));
-    });
-    const detector = new MusicDetector({ platform: 'darwin', execFile });
-
-    assert.strictEqual(await detector.getCurrentMusic(), null);
+  it('parses and formats tracks', () => {
+    assert.strictEqual(parseTrack('', 'Spotify'), null);
+    assert.deepStrictEqual(parseTrack('Untitled', 'Spotify'), { title: 'Untitled', artist: null, service: 'Spotify' });
+    assert.strictEqual(formatTrack({ title: 'Song', artist: 'Band' }), 'Song — Band');
+    assert.strictEqual(formatTrack({ title: 'Song', artist: null }), 'Song');
   });
 });

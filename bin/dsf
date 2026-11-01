@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
+const { loadEnvironment } = require('../main');
 const { runCli } = require('../src/cli');
 
+loadEnvironment();
 runCli().catch(error => {
   console.error(`[ERROR] ${error.stack || error.message}`);
   process.exitCode = 1;
