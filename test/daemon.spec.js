@@ -28,7 +28,9 @@ function createHarness(options = {}) {
     fs: {
       appendFileSync() {},
       closeSync() {},
-      openSync: () => 10
+      mkdirSync() {},
+      openSync: () => 10,
+      statSync: () => ({ size: 0 })
     },
     inspector,
     logFile: '/project/status.log',

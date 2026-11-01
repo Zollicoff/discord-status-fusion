@@ -2,4 +2,4 @@
 
 See [AGENTS.md](AGENTS.md) for current repository architecture, commands, invariants, and testing guidance.
 
-Important: Discord Status Fusion intentionally uses Gemini as a constrained decision layer. Preserve canonical local detection, structured application IDs, response validation, decision caching, and rule-based fallback. Never let the model invent, rename, or directly render application names.
+Important: Discord Status Fusion is fully local and dependency-free at runtime. Status text is deterministic: focus-ranked catalog apps plus category phrases. Never render raw process names, and keep the Discord connection self-healing (request timeouts, endless reconnect, resend after reconnect).

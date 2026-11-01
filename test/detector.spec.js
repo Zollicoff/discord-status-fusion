@@ -1,240 +1,280 @@
-const { describe, it, beforeEach } = require('node:test');
+const { describe, it } = require('node:test');
 const assert = require('node:assert');
 
-const ProcessDetector = require('../src/core/detector');
+const { APP_CATALOG, getApp, matchApp, resolveApp } = require('../src/core/app-catalog');
+const { CATEGORY_PHRASES } = require('../src/core/activity');
+const { AppDetector, encodePowerShell, WINDOWS_SCRIPT } = require('../src/core/detector');
 
-describe('ProcessDetector', () => {
-  let detector;
+function nameOf(detector, processName) {
+  return detector.identify(processName)?.name || null;
+}
 
-  beforeEach(() => {
-    detector = new ProcessDetector();
+/**
+ * Fake execFile that answers by command name.
+ */
+function fakeExec(responses, calls = []) {
+  return (command, args, _options, callback) => {
+    calls.push({ command, args });
+    const response = responses[command];
+    const value = typeof response === 'function' ? response(args) : response;
+    if (value instanceof Error) {
+      callback(value);
+    } else if (value === undefined) {
+      callback(Object.assign(new Error(`spawn ${command} ENOENT`), { code: 'ENOENT' }));
+    } else {
+      callback(null, value);
+    }
+  };
+}
+
+describe('app catalog', () => {
+  it('has unique ids and a phrase set for every category', () => {
+    assert.strictEqual(new Set(APP_CATALOG.map(entry => entry.id)).size, APP_CATALOG.length);
+    for (const entry of APP_CATALOG) {
+      assert.ok(CATEGORY_PHRASES[entry.category], `${entry.id} has unknown category ${entry.category}`);
+      assert.ok(entry.patterns.length > 0);
+    }
   });
 
-  describe('isProfessionalApp', () => {
-    it('should identify VS Code as professional app', () => {
-      assert.strictEqual(detector.isProfessionalApp('code'), true);
-      assert.strictEqual(detector.isProfessionalApp('Code'), true);
-      assert.strictEqual(detector.getDisplayAppName('code'), 'VS Code');
-    });
+  it('resolves user references by id, display name, or alias', () => {
+    assert.strictEqual(resolveApp('vscode').id, 'vscode');
+    assert.strictEqual(resolveApp('VS Code').id, 'vscode');
+    assert.strictEqual(resolveApp('Visual Studio Code').id, 'vscode');
+    assert.strictEqual(resolveApp('  safari ').id, 'safari');
+    assert.strictEqual(resolveApp('not an app'), null);
+    assert.strictEqual(getApp('chrome').name, 'Google Chrome');
+    assert.strictEqual(matchApp('chrome').id, matchApp('Google Chrome').id);
+  });
+});
 
-    it('should identify Cursor as professional app', () => {
-      assert.strictEqual(detector.isProfessionalApp('cursor'), true);
-      assert.strictEqual(detector.isProfessionalApp('Cursor'), true);
-    });
+describe('AppDetector.identify', () => {
+  const detector = new AppDetector();
 
-    it('should identify Zed as professional app', () => {
-      assert.strictEqual(detector.isProfessionalApp('zed'), true);
-      assert.strictEqual(detector.isProfessionalApp('Zed'), true);
-      assert.strictEqual(detector.getDisplayAppName('zed'), 'Zed');
-    });
-
-    it('should identify browsers as professional apps', () => {
-      assert.strictEqual(detector.isProfessionalApp('chrome'), true);
-      assert.strictEqual(detector.isProfessionalApp('Safari'), true);
-      assert.strictEqual(detector.isProfessionalApp('Firefox'), true);
-      assert.strictEqual(detector.isProfessionalApp('Arc'), true);
-    });
-
-    it('should identify Adobe apps as professional', () => {
-      assert.strictEqual(detector.isProfessionalApp('Adobe Photoshop'), true);
-      assert.strictEqual(detector.isProfessionalApp('Adobe Illustrator'), true);
-    });
-
-    it('should not treat generic stable processes as Warp', () => {
-      assert.strictEqual(detector.isProfessionalApp('stable'), false);
-      assert.strictEqual(detector.getDisplayAppName('stable'), null);
-    });
-
-    it('should identify Warp by its app name only', () => {
-      assert.strictEqual(detector.isProfessionalApp('Warp'), true);
-      assert.strictEqual(detector.getDisplayAppName('/Applications/Warp.app/Contents/MacOS/stable'), 'Warp');
-    });
-
-    it('should identify ChatGPT, legacy Codex, and Ghostty as professional apps', () => {
-      assert.strictEqual(detector.isProfessionalApp('ChatGPT'), true);
-      assert.strictEqual(detector.isProfessionalApp('Codex'), true);
-      assert.strictEqual(detector.isProfessionalApp('ghostty'), true);
-      assert.strictEqual(detector.getDisplayAppName('ChatGPT'), 'ChatGPT');
-      assert.strictEqual(detector.getDisplayAppName('ghostty'), 'Ghostty');
-    });
-
-    it('should identify T3 Code release channels under one canonical name', () => {
-      assert.strictEqual(detector.getDisplayAppName('T3 Code'), 'T3 Code');
-      assert.strictEqual(detector.getDisplayAppName('T3 Code (Nightly)'), 'T3 Code');
-      assert.strictEqual(detector.getDisplayAppName('/Applications/T3 Code (Nightly).app/Contents/MacOS/T3 Code (Nightly)'), 'T3 Code');
-      assert.strictEqual(detector.getDisplayAppName('/Applications/T3 Code (Nightly).app/Contents/Frameworks/T3 Code (Nightly) Helper.app/Contents/MacOS/T3 Code (Nightly) Helper'), null);
-      assert.strictEqual(detector.getDisplayAppName('T3'), null);
-    });
-
-    it('should identify canonical productivity and cross-platform aliases', () => {
-      assert.strictEqual(detector.getDisplayAppName('Notion Calendar'), 'Notion Calendar');
-      assert.strictEqual(detector.getDisplayAppName('WINWORD'), 'Microsoft Word');
-      assert.strictEqual(detector.getDisplayAppName('POWERPNT'), 'Microsoft PowerPoint');
-      assert.strictEqual(detector.getDisplayAppName('WindowsTerminal'), 'Windows Terminal');
-    });
-
-    it('should normalize supported Affinity versions without broad prefix matching', () => {
-      assert.strictEqual(detector.getDisplayAppName('Affinity Designer 2'), 'Affinity Designer');
-      assert.strictEqual(detector.getDisplayAppName('Affinity Photo'), 'Affinity Photo');
-      assert.strictEqual(detector.getDisplayAppName('Affinity Publisher Helper'), null);
-    });
-
-    it('should reject macOS widget extension processes inside app bundles', () => {
-      const officeWidget = '/Applications/Microsoft Word.app/Contents/PlugIns/WordWidget_mac.appex/Contents/MacOS/WordWidget_mac';
-      assert.strictEqual(detector.isProfessionalApp(officeWidget), false);
-      assert.strictEqual(detector.getDisplayAppName(officeWidget), null);
-    });
-
-    it('should reject unmatched system paths through the whitelist', () => {
-      assert.strictEqual(detector.isProfessionalApp('/System/Library/something'), false);
-      assert.strictEqual(detector.isProfessionalApp('/usr/bin/something'), false);
-      assert.strictEqual(detector.isProfessionalApp('/Library/something'), false);
-    });
-
-    it('should allow whitelisted apps from system paths', () => {
-      assert.strictEqual(detector.getDisplayAppName('/usr/bin/vim'), 'Vim');
-      assert.strictEqual(
-        detector.getDisplayAppName('/System/Applications/Safari.app/Contents/MacOS/Safari'),
-        'Safari'
-      );
-    });
-
-    it('should reject helper processes', () => {
-      assert.strictEqual(detector.isProfessionalApp('SomeXPCService'), false);
-      assert.strictEqual(detector.isProfessionalApp('SomeHelperTool'), false);
-    });
-
-    it('should reject framework paths', () => {
-      assert.strictEqual(detector.isProfessionalApp('something.framework/binary'), false);
-    });
-
-    it('should reject random process names', () => {
-      assert.strictEqual(detector.isProfessionalApp('random_daemon'), false);
-      assert.strictEqual(detector.isProfessionalApp('some_background_process'), false);
-    });
+  it('maps aliases to one canonical app', () => {
+    assert.strictEqual(nameOf(detector, 'code'), 'VS Code');
+    assert.strictEqual(nameOf(detector, 'Visual Studio Code'), 'VS Code');
+    assert.strictEqual(nameOf(detector, 'code --unity-launch'), 'VS Code');
+    assert.strictEqual(nameOf(detector, 'T3 Code (Nightly)'), 'T3 Code');
+    assert.strictEqual(nameOf(detector, 'WINWORD'), 'Microsoft Word');
+    assert.strictEqual(nameOf(detector, 'WindowsTerminal'), 'Windows Terminal');
+    assert.strictEqual(nameOf(detector, 'Affinity Designer 2'), 'Affinity Designer');
+    assert.strictEqual(nameOf(detector, 'google-chrome-stable'), 'Google Chrome');
+    assert.strictEqual(nameOf(detector, '/opt/google/chrome/chrome --type=renderer'), 'Google Chrome');
   });
 
-  describe('extractAppName', () => {
-    it('should extract app name from macOS bundle path', () => {
-      const result = detector.extractAppName('/Applications/Cursor.app/Contents/MacOS/Cursor');
-      assert.strictEqual(result, 'Cursor');
-    });
-
-    it('should collapse helper processes to the outer app bundle', () => {
-      const result = detector.extractAppName('/Applications/Codex.app/Contents/Frameworks/Codex Framework.framework/Versions/149.0.7827.197/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)');
-      assert.strictEqual(result, 'Codex');
-    });
-
-    it('should extract app name from .app directory', () => {
-      const result = detector.extractAppName('/Applications/Visual Studio Code.app');
-      assert.strictEqual(result, 'Visual Studio Code');
-    });
-
-    it('should remove .exe extension', () => {
-      const result = detector.extractAppName('code.exe');
-      assert.strictEqual(result, 'code');
-    });
-
-    it('should return name as-is if no special path', () => {
-      const result = detector.extractAppName('node');
-      assert.strictEqual(result, 'node');
-    });
+  it('resolves bundle paths to the outer app', () => {
+    assert.strictEqual(nameOf(detector, '/Applications/Warp.app/Contents/MacOS/stable'), 'Warp');
+    assert.strictEqual(nameOf(detector, '/System/Applications/Safari.app/Contents/MacOS/Safari'), 'Safari');
+    assert.strictEqual(
+      detector.extractAppName('/Applications/Codex.app/Contents/Frameworks/X.framework/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)'),
+      'Codex'
+    );
+    assert.strictEqual(nameOf(detector, '/usr/bin/vim'), 'Vim');
+    assert.strictEqual(nameOf(detector, '"C:\\Program Files\\Microsoft VS Code\\Code.exe" --flag'), 'VS Code');
   });
 
-  describe('getProcessCommand', () => {
-    it('should use PowerShell instead of deprecated WMIC on Windows', () => {
-      const windowsDetector = new ProcessDetector({ platform: 'win32' });
-      const { command, args } = windowsDetector.getProcessCommand();
+  it('rejects helpers, widgets, frameworks, and generic names', () => {
+    assert.strictEqual(nameOf(detector, 'stable'), null);
+    assert.strictEqual(nameOf(detector, 'T3'), null);
+    assert.strictEqual(nameOf(detector, 'Affinity Publisher Helper'), null);
+    assert.strictEqual(nameOf(detector, 'SomeXPCService'), null);
+    assert.strictEqual(nameOf(detector, 'something.framework/binary'), null);
+    assert.strictEqual(
+      nameOf(detector, '/Applications/Microsoft Word.app/Contents/PlugIns/WordWidget_mac.appex/Contents/MacOS/WordWidget_mac'),
+      null
+    );
+    assert.strictEqual(
+      nameOf(detector, '/Applications/T3 Code (Nightly).app/Contents/Frameworks/T3 Code (Nightly) Helper.app/Contents/MacOS/T3 Code (Nightly) Helper'),
+      null
+    );
+    assert.strictEqual(nameOf(detector, '/usr/bin/something'), null);
+    assert.strictEqual(nameOf(detector, ''), null);
+    assert.strictEqual(nameOf(detector, null), null);
+  });
+});
 
-      assert.strictEqual(command, 'powershell.exe');
-      assert.ok(args.some(arg => arg.includes('Get-Process')));
+describe('AppDetector.sample', () => {
+  it('reads running and frontmost apps plus idle time on macOS', async() => {
+    const calls = [];
+    const detector = new AppDetector({
+      platform: 'darwin',
+      execFile: fakeExec({
+        ioreg: '    | |   "HIDIdleTime" = 42000000000\n',
+        osascript: JSON.stringify({ front: 'Cursor', apps: ['Finder', 'Google Chrome', 'Cursor', 'ChatGPT'] })
+      }, calls)
     });
 
-    it('should request full command lines on Unix', () => {
-      const linuxDetector = new ProcessDetector({ platform: 'linux' });
-      const { command, args } = linuxDetector.getProcessCommand();
+    const sample = await detector.sample();
 
-      assert.strictEqual(command, 'ps');
-      assert.ok(args.includes('command='));
+    assert.deepStrictEqual(sample, {
+      focused: 'cursor',
+      focusSupported: true,
+      idleSeconds: 42,
+      running: ['chatgpt', 'cursor', 'chrome']
     });
+    const osascript = calls.find(call => call.command === 'osascript');
+    assert.ok(osascript.args.includes('JavaScript'));
+    assert.ok(osascript.args.some(arg => arg.includes('frontmostApplication')));
   });
 
-  describe('parseProcessOutput', () => {
-    it('should parse process output and remove headers', () => {
-      const output = `COMM
-node
-code
-cursor
-/System/Library/something`;
-
-      const result = detector.parseProcessOutput(output);
-      assert.ok(Array.isArray(result));
-      assert.ok(result.includes('node'));
-      assert.ok(result.includes('code'));
-      assert.ok(result.includes('cursor'));
+  it('reports no focus when an unknown app is frontmost', async() => {
+    const detector = new AppDetector({
+      platform: 'darwin',
+      execFile: fakeExec({
+        ioreg: new Error('no ioreg'),
+        osascript: JSON.stringify({ front: 'Finder', apps: ['Finder', 'Safari'] })
+      })
     });
 
-    it('should preserve full command lines until helper filtering', () => {
-      const output = `/Applications/Codex.app/Contents/MacOS/Codex
-/Applications/Codex.app/Contents/Frameworks/Codex Framework.framework/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)
-/Applications/Ghostty.app/Contents/MacOS/ghostty`;
+    const sample = await detector.sample();
 
-      const result = detector.parseProcessOutput(output);
-      assert.strictEqual(result[0], '/Applications/Codex.app/Contents/MacOS/Codex');
-      assert.ok(result[1].includes('/Frameworks/'));
-    });
-
-    it('should filter out COMM header', () => {
-      const output = `COMM
-node`;
-      const result = detector.parseProcessOutput(output);
-      assert.ok(!result.includes('COMM'));
-    });
+    assert.strictEqual(sample.focused, null);
+    assert.strictEqual(sample.focusSupported, true);
+    assert.strictEqual(sample.idleSeconds, null);
+    assert.deepStrictEqual(sample.running, ['safari']);
   });
 
-  describe('getInterestingApps', () => {
-    it('should use the native macOS workspace application list', async() => {
-      const calls = [];
-      const execFile = (command, args, _options, callback) => {
-        calls.push({ command, args });
-        callback(null, 'Finder\nChatGPT\nGhostty\nChatGPT\n');
-      };
-      const macDetector = new ProcessDetector({ platform: 'darwin', execFile });
-
-      const apps = await macDetector.getInterestingApps();
-
-      assert.deepStrictEqual(apps, ['ChatGPT', 'Ghostty']);
-      assert.strictEqual(calls[0].command, 'osascript');
-      assert.ok(calls[0].args.includes('JavaScript'));
-      assert.ok(calls[0].args.some(arg => arg.includes('NSWorkspace')));
-    });
-
-    it('should reject helper and widget paths in the ps fallback', async() => {
-      let callCount = 0;
-      const execFile = (command, _args, _options, callback) => {
-        callCount += 1;
-        if (command === 'osascript') {
-          callback(new Error('temporary workspace failure'));
-          return;
-        }
-
-        callback(null, [
+  it('falls back to ps on macOS when the workspace query fails', async() => {
+    const messages = [];
+    const detector = new AppDetector({
+      platform: 'darwin',
+      logger: { warn: message => messages.push(message), debug() {} },
+      execFile: fakeExec({
+        ioreg: '',
+        osascript: new Error('temporary workspace failure'),
+        ps: [
           '/Applications/Microsoft Word.app/Contents/PlugIns/WordWidget_mac.appex/Contents/MacOS/WordWidget_mac',
           '/Applications/ChatGPT.app/Contents/MacOS/ChatGPT',
           '/Applications/ChatGPT.app/Contents/Frameworks/ChatGPT Helper.app/Contents/MacOS/ChatGPT Helper',
           '/Applications/Ghostty.app/Contents/MacOS/ghostty'
-        ].join('\n'));
-      };
-      const macDetector = new ProcessDetector({ platform: 'darwin', execFile });
-
-      const apps = await macDetector.getInterestingApps();
-
-      assert.strictEqual(callCount, 2);
-      assert.deepStrictEqual(apps, ['ChatGPT', 'Ghostty']);
+        ].join('\n')
+      })
     });
 
-    it('should recognize bare executables followed by arguments', () => {
-      assert.strictEqual(detector.getDisplayAppName('code --unity-launch'), 'VS Code');
+    const sample = await detector.sample();
+    await detector.sample();
+
+    assert.deepStrictEqual(sample.running, ['chatgpt', 'ghostty']);
+    assert.strictEqual(sample.focusSupported, false);
+    assert.strictEqual(messages.length, 1, 'warns only once');
+  });
+
+  it('parses windowed processes, focus, and idle time on Windows', async() => {
+    const calls = [];
+    const detector = new AppDetector({
+      platform: 'win32',
+      execFile: fakeExec({
+        'powershell.exe': 'F:Code\r\nI:12\r\nA:Code\r\nA:msedge\r\nA:explorer\r\nS:native\r\n'
+      }, calls)
     });
+
+    const sample = await detector.sample();
+
+    assert.deepStrictEqual(sample, {
+      focused: 'vscode',
+      focusSupported: true,
+      idleSeconds: 12,
+      running: ['vscode', 'edge']
+    });
+    const args = calls[0].args;
+    assert.ok(args.includes('-EncodedCommand'));
+    assert.strictEqual(
+      Buffer.from(args.at(-1), 'base64').toString('utf16le'),
+      WINDOWS_SCRIPT
+    );
+    assert.strictEqual(encodePowerShell('x'), Buffer.from('x', 'utf16le').toString('base64'));
+  });
+
+  it('falls back to open apps when Windows native APIs fail to load', async() => {
+    const messages = [];
+    const detector = new AppDetector({
+      platform: 'win32',
+      logger: { warn: message => messages.push(message), debug() {} },
+      execFile: fakeExec({ 'powershell.exe': 'A:Code\r\nA:figma\r\n' })
+    });
+
+    const sample = await detector.sample();
+
+    assert.strictEqual(sample.focusSupported, false);
+    assert.deepStrictEqual(sample.running, ['vscode', 'figma']);
+    assert.match(messages[0], /Windows focus and idle APIs are unavailable/);
+  });
+
+  it('uses xprop and xprintidle on Linux when a display is available', async() => {
+    const detector = new AppDetector({
+      platform: 'linux',
+      env: { DISPLAY: ':0' },
+      execFile: fakeExec({
+        ps: '  101 /usr/share/code/code --type=zygote\n  202 /usr/bin/ghostty\n  303 /usr/lib/firefox/firefox\n',
+        xprintidle: '65000\n',
+        xprop: args => args[0] === '-root' ?
+          '_NET_ACTIVE_WINDOW(WINDOW): window id # 0x3a00007\n' :
+          '_NET_WM_PID(CARDINAL) = 202\n'
+      })
+    });
+
+    const sample = await detector.sample();
+
+    assert.deepStrictEqual(sample, {
+      focused: 'ghostty',
+      focusSupported: true,
+      idleSeconds: 65,
+      running: ['vscode', 'ghostty', 'firefox']
+    });
+  });
+
+  it('degrades gracefully on Linux without X11 tools', async() => {
+    const calls = [];
+    const detector = new AppDetector({
+      platform: 'linux',
+      env: { DISPLAY: ':0' },
+      execFile: fakeExec({ ps: '1 /usr/bin/zed\n' }, calls)
+    });
+
+    const first = await detector.sample();
+    await detector.sample();
+
+    assert.deepStrictEqual(first, {
+      focused: null,
+      focusSupported: false,
+      idleSeconds: null,
+      running: ['zed']
+    });
+    assert.strictEqual(calls.filter(call => call.command === 'xprop').length, 1, 'missing tools are not retried');
+    assert.strictEqual(calls.filter(call => call.command === 'xprintidle').length, 1);
+  });
+
+  it('reports a desktop with no focused window', async() => {
+    const detector = new AppDetector({
+      platform: 'linux',
+      env: { DISPLAY: ':0' },
+      execFile: fakeExec({
+        ps: '1 /usr/bin/zed\n',
+        xprintidle: 'n/a',
+        xprop: '_NET_ACTIVE_WINDOW(WINDOW): window id # 0x0\n'
+      })
+    });
+
+    const sample = await detector.sample();
+
+    assert.strictEqual(sample.focusSupported, true);
+    assert.strictEqual(sample.focused, null);
+    assert.strictEqual(sample.idleSeconds, null);
+  });
+
+  it('never reports hidden apps', async() => {
+    const detector = new AppDetector({
+      platform: 'darwin',
+      hiddenIds: ['safari'],
+      execFile: fakeExec({
+        ioreg: '',
+        osascript: JSON.stringify({ front: 'Safari', apps: ['Safari', 'Zed'] })
+      })
+    });
+
+    const sample = await detector.sample();
+
+    assert.deepStrictEqual(sample.running, ['zed']);
+    assert.strictEqual(sample.focused, null);
   });
 });

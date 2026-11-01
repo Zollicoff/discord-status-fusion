@@ -2,90 +2,61 @@
 
 Guidance for coding agents working in this repository.
 
-## Project Overview
+## Project overview
 
-Discord Status Fusion is an AI-curated Discord Rich Presence daemon. It detects approved foreground applications and music locally, asks Gemini to choose the most relevant activity and context, validates the structured decision, and updates Discord only when source state changes or a refresh is due.
-
-The LLM is an intentional part of the product, not an optional novelty to remove. Application and music detection remain the source of truth: Gemini may select canonical application IDs and write a generic summary, but code renders names and rejects ungrounded output. Rule-based formatting is the availability fallback.
+Discord Status Fusion is a local Discord Rich Presence daemon. It samples running apps, the focused app, idle time and music. It ranks apps by recent focus time and builds a presence from a deterministic category phrase plus canonical app names, then keeps Discord in sync over a built-in IPC client that reconnects forever. It has no runtime dependencies and makes no network calls other than to the local Discord client.
 
 ## Commands
 
 ```bash
 npm start               # Run in the foreground
-npm start -- --verbose  # Run with verbose state logs
-dsf start               # Start the background daemon
-dsf stop                # Stop the daemon
-dsf restart             # Restart the daemon
-dsf status              # Check daemon state
+npm start -- --verbose  # Per-sample detail
+npm run dev             # node --watch
+npm run preview         # One-off detection preview (no Discord)
+npm run lint            # ESLint
+npm test                # node:test suite
+npm run check           # Lint, test, production audit
+node test/smoke.js      # Real detection on this machine (CI runs it per OS)
 
-npm run dev             # Run with nodemon
-npm run lint            # Run ESLint
-npm test                # Run node:test suite
-npm run check           # Lint, test, and production dependency audit
-npm install -g .        # Refresh the global dsf CLI link
+dsf start | stop | restart | status | preview | logs [n] | install | uninstall
+npm install -g .        # Link the dsf CLI
 ```
 
 ## Architecture
 
-- `main.js`: `.env` bootstrap and runtime entry point only
-- `src/runtime.js`: configuration, dependency wiring, process signals, and startup failures
-- `src/app.js`: source snapshots, change detection, refresh scheduling, and shutdown coordination
-- `src/core/app-catalog.js`: approved app aliases, canonical names, and display priority
-- `src/core/detector.js`: platform app enumeration, helper rejection, catalog lookup, and deduplication
-- `src/core/music.js`: non-launching Apple Music and Spotify queries on macOS
-- `src/core/api-key.js`: environment and macOS Keychain Gemini credential loading
-- `src/core/gemini.js`: schema-constrained Gemini REST requests
-- `src/core/status-decision.js`: trusted context, prompt/schema, and decision validation
-- `src/core/status-generator.js`: AI decision caching, rendering, and fallback coordination
-- `src/core/status.js`: rule-based fallback formatting and 128-character fitting
-- `src/core/discord.js`: Discord IPC, retry, reconnect, activity, and shutdown
-- `src/cli/`: daemon lifecycle, PID storage, process verification, paths, and command routing
-- `test/`: unit and regression tests using `node:test`
+- `main.js`: loads `.env` (project root or `DSF_ENV_FILE`) and calls `run()`
+- `src/runtime.js`: config, instance lock, dependency wiring, signals, `--log-file`
+- `src/app.js`: sampling loop, idle handling, elapsed-timer sessions
+- `src/paths.js`: per-user state and log paths
+- `src/preview.js`: single sample rendered for humans
+- `src/core/app-catalog.js`: supported apps (`id`, `name`, `category`, `patterns`), with order as fallback priority
+- `src/core/detector.js`: per-platform apps, focus and idle; returns catalog ids only
+- `src/core/focus-tracker.js`: decayed focus scores, leader hysteresis
+- `src/core/activity.js`: category and pair phrases, stable selection
+- `src/core/presence.js`: Discord activity payloads and text fitting
+- `src/core/music.js`: AppleScript (macOS) and playerctl (Linux) track detection
+- `src/core/discord-ipc.js`: Discord RPC wire protocol
+- `src/core/discord.js`: connection lifecycle, dedupe, resend, legacy fallback
+- `src/cli/`: daemon control, login services, PID store, process verification
+- `test/`: unit tests plus `helpers/fake-discord.js` (a real IPC server) and `smoke.js`
 
-See `docs/ARCHITECTURE.md` for the complete module map and extension workflow.
+See `docs/ARCHITECTURE.md` for details.
 
 ## Invariants
 
-- Add app aliases to `APP_CATALOG` with a canonical `displayName`.
-- Catalog order is display priority. Keep ChatGPT and development tools near the top.
-- Preserve full fallback command paths until helper, framework, plug-in, and widget filters run.
-- Generic executable names such as `stable` must not be inferred as branded apps.
-- Music queries must check `application ... is running` before sending player commands.
-- Send Gemini only normalized approved app names and current music, never raw process paths.
-- Gemini selects only structured application IDs. Code must render their canonical names.
-- Reject unknown or duplicate IDs, application names in summaries, phantom music, URLs, multiline text, and malformed output.
-- Cache valid decisions by normalized source snapshot; forced Discord refreshes must not cause duplicate LLM calls.
-- Rule-based fallback details must be derived only from normalized detector output and fit complete names when possible.
-- Never signal a PID from `dsf.pid` until its command contains this project's resolved `main.js` path as a complete argument.
+- Displayed app names come only from catalog `name` fields. Raw process data never leaves `detector.js`.
+- Add apps to `APP_CATALOG` with a unique id, a category that has phrases in `activity.js`, and narrow patterns. Generic executables such as `stable` must not match.
+- Keep full fallback command paths until helper, framework, plug-in and widget filters have run.
+- Music queries must check `application … is running` before sending player commands. Linux music uses an allow-list of players.
+- Every Discord request has a timeout. `DiscordPresence` must keep retrying while the daemon runs and re-send the desired activity after reconnecting.
+- Phrases must be deterministic for a given app set (no per-poll randomness).
+- Never signal a PID unless its command contains this project's resolved `main.js` path as a complete argument.
+- The runtime owns the instance lock and only removes a PID file that it owns.
 
 ## Configuration
 
-Create `.env` from `.env.example`:
+See `.env.example`. `DISCORD_CLIENT_ID` is required (17–20 digits). Everything else is optional: `UPDATE_INTERVAL`, `IDLE_TIMEOUT`, `FOCUS_HALF_LIFE`, `MAX_APPS`, `SHOW_MUSIC`, `HIDE_APPS`, `STATUS_DISPLAY`, `LARGE_IMAGE`, `APP_ICON_URL`, `LOG_LEVEL`. Retired settings (`LLM_ENABLED`, `GEMINI_*`, `GOOGLE_AI_API_KEY`, `FORCE_UPDATE_INTERVAL`) produce a "no longer used" warning.
 
-```dotenv
-DISCORD_CLIENT_ID=your_discord_application_id_here
-LLM_ENABLED=true
-GEMINI_MODEL=gemini-2.5-flash-lite
-# GEMINI_API_KEY=your-api-key
-UPDATE_INTERVAL=10000
-FORCE_UPDATE_INTERVAL=300000
-LOG_LEVEL=info
-```
+## Testing
 
-`DISCORD_CLIENT_ID` is required and must be a 17-19 digit Discord application ID. `GEMINI_API_KEY` may come from the environment or `.env`; on macOS, `GEMINI_API_KEY` and the legacy `GOOGLE_AI_API_KEY` Keychain service names are supported. Missing credentials must degrade to fallback rather than stop the daemon.
-
-## Platform Behavior
-
-- macOS: foreground-capable apps through JXA `NSWorkspace`; Apple Music and Spotify through guarded AppleScript
-- Windows: process names through non-interactive PowerShell; no music detection
-- Linux: full command lines through `ps`; no music detection
-
-## Requirements
-
-- Node.js 22.13 or newer
-- `discord-rpc` for Discord IPC
-- `dotenv` for local configuration
-- Native `fetch` for Gemini REST calls
-- ESLint flat configuration in `eslint.config.js`
-
-Run `npm run check` after behavioral changes. For detector changes, also run a live `getRunningProcesses()` and `getInterestingApps()` snapshot on the target platform.
+Run `npm run check` after behavioral changes. For detector changes, also run `node test/smoke.js` or `dsf preview` on the target platform. CI runs tests and the smoke test on Ubuntu, macOS and Windows with Node 22 and 24.

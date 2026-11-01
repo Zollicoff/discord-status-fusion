@@ -1,7 +1,7 @@
 {
   "name": "discord-status-fusion",
-  "version": "1.0.0",
-  "description": "AI-curated Discord Rich Presence for active professional apps and music.",
+  "version": "2.0.0",
+  "description": "Discord Rich Presence that shows what you are actually working on: focus-ranked apps, music, and idle detection, with zero runtime dependencies.",
   "main": "main.js",
   "bin": {
     "dsf": "./bin/dsf"
@@ -15,10 +15,8 @@
   ],
   "scripts": {
     "start": "node main.js",
-    "start:daemon": "node bin/dsf start",
-    "stop:daemon": "node bin/dsf stop",
-    "restart:daemon": "node bin/dsf restart",
-    "dev": "nodemon main.js",
+    "preview": "node bin/dsf preview",
+    "dev": "node --watch main.js --verbose",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "node --test test/*.spec.js",
@@ -32,14 +30,15 @@
   "keywords": [
     "discord",
     "rich-presence",
+    "discord-rpc",
     "developer-tools",
-    "multi-app",
-    "fusion",
-    "gemini",
-    "llm",
-    "smart-status",
+    "focus-tracking",
     "productivity",
-    "automation"
+    "status",
+    "daemon",
+    "macos",
+    "linux",
+    "windows"
   ],
   "author": "Zollicoff",
   "license": "MIT",
@@ -47,17 +46,12 @@
     "url": "https://github.com/Zollicoff/discord-status-fusion/issues"
   },
   "homepage": "https://github.com/Zollicoff/discord-status-fusion#readme",
-  "dependencies": {
-    "discord-rpc": "^4.0.1",
-    "dotenv": "^17.4.2"
-  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.8.0",
-    "globals": "^17.9.0",
-    "nodemon": "^3.1.14"
+    "globals": "^17.9.0"
   },
   "engines": {
-    "node": ">=26.0.0"
+    "node": ">=22.0.0"
   }
 }

@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 
 function parsePidRecord(content) {
   const trimmed = content.trim();
@@ -17,23 +18,39 @@ function parsePidRecord(content) {
   }
 }
 
+/**
+ * Stores the daemon PID record. Reads fall back to the legacy in-repo
+ * `dsf.pid` so an older daemon can still be stopped after upgrading.
+ */
 class PidStore {
-  constructor(filePath, fsImpl = fs) {
+  constructor(filePath, options = {}) {
     this.filePath = filePath;
-    this.fs = fsImpl;
+    this.legacyPath = options.legacyPath || null;
+    this.fs = options.fs || fs;
+  }
+
+  existingPath() {
+    if (this.fs.existsSync(this.filePath)) {
+      return this.filePath;
+    }
+    if (this.legacyPath && this.fs.existsSync(this.legacyPath)) {
+      return this.legacyPath;
+    }
+    return null;
   }
 
   exists() {
-    return this.fs.existsSync(this.filePath);
+    return this.existingPath() !== null;
   }
 
   read() {
-    if (!this.exists()) {
+    const filePath = this.existingPath();
+    if (!filePath) {
       return null;
     }
 
     try {
-      return parsePidRecord(this.fs.readFileSync(this.filePath, 'utf8'));
+      return parsePidRecord(this.fs.readFileSync(filePath, 'utf8'));
     } catch {
       return null;
     }
@@ -45,14 +62,21 @@ class PidStore {
       mainFile,
       startedAt: new Date().toISOString()
     };
+    this.fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
     this.fs.writeFileSync(this.filePath, JSON.stringify(record, null, 2), { mode: 0o600 });
     this.fs.chmodSync(this.filePath, 0o600);
     return record;
   }
 
   remove() {
-    if (this.exists()) {
-      this.fs.unlinkSync(this.filePath);
+    for (const filePath of [this.filePath, this.legacyPath]) {
+      if (filePath && this.fs.existsSync(filePath)) {
+        try {
+          this.fs.unlinkSync(filePath);
+        } catch {
+          // Another process may have removed it first.
+        }
+      }
     }
   }
 }

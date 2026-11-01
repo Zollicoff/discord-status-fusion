@@ -29,7 +29,7 @@ class ProcessInspector {
           '-NonInteractive',
           '-Command',
           `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CommandLine`
-        ], { encoding: 'utf8' }).trim();
+        ], { encoding: 'utf8', windowsHide: true }).trim();
       }
 
       return this.execFileSync('ps', ['-p', String(pid), '-o', 'command='], {
